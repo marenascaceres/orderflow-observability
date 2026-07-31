@@ -1,0 +1,28 @@
+# ============================================================
+# Alertmanager - Configuracion base para OrderFlow
+# ============================================================
+# Sesion 5 completa este archivo con integraciones reales
+# (email, Slack, webhooks). Por ahora solo un receiver dummy
+# para que el servicio arranque sin errores.
+# ============================================================
+
+global:
+  resolve_timeout: 5m
+
+route:
+  group_by: ["alertname"]
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+  receiver: default-receiver
+
+receivers:
+  - name: default-receiver
+    # Sesion 5: reemplazar por webhook, email, Slack, etc.
+
+inhibit_rules:
+  - source_match:
+      severity: critical
+    target_match:
+      severity: warning
+    equal: ["alertname"]

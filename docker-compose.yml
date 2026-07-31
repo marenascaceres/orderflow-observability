@@ -1,0 +1,233 @@
+# ============================================================
+# OrderFlow - Stack de observabilidad completo
+# ============================================================
+# Levantar:  docker compose up -d
+# Detener:   docker compose down
+# Ver logs:  docker compose logs -f <servicio>
+# Estado:    docker compose ps
+# ============================================================
+
+name: orderflow
+
+networks:
+  orderflow-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  alertmanager_data:
+  elasticsearch_data:
+  grafana_data:
+
+services:
+
+  # ============================================================
+  # PIPELINE DE DATOS (generator -> redis -> processor -> postgres)
+  # ============================================================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: orderflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-orderflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-orderflow_dev_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-orderflow_dw}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - orderflow-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-orderflow} -d ${POSTGRES_DB:-orderflow_dw}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: orderflow-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - orderflow-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  order-generator:
+    build:
+      context: ./services/order-generator
+      dockerfile: Dockerfile
+    container_name: orderflow-generator
+    restart: unless-stopped
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      GENERATION_INTERVAL_SEC: ${GENERATION_INTERVAL_SEC:-1}
+      METRICS_PORT: ${GENERATOR_METRICS_PORT:-8000}
+    ports:
+      - "${GENERATOR_METRICS_PORT:-8000}:8000"
+    networks:
+      - orderflow-net
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  order-processor:
+    build:
+      context: ./services/order-processor
+      dockerfile: Dockerfile
+    container_name: orderflow-processor
+    restart: unless-stopped
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-orderflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-orderflow_dev_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-orderflow_dw}
+      LOGSTASH_HOST: logstash
+      LOGSTASH_PORT: 5044
+      ERROR_RATE_PCT: ${ERROR_RATE_PCT:-5}
+      BASE_LATENCY_MS: ${BASE_LATENCY_MS:-200}
+      METRICS_PORT: ${PROCESSOR_METRICS_PORT:-8001}
+    ports:
+      - "${PROCESSOR_METRICS_PORT:-8001}:8001"
+    networks:
+      - orderflow-net
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # ============================================================
+  # RAMA DE METRICAS (Prometheus + Alertmanager + Grafana)
+  # ============================================================
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: orderflow-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - orderflow-net
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: orderflow-alertmanager
+    restart: unless-stopped
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    networks:
+      - orderflow-net
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: orderflow-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_INSTALL_PLUGINS: ""
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - orderflow-net
+    depends_on:
+      - prometheus
+
+  # ============================================================
+  # RAMA DE LOGS (Logstash + Elasticsearch + Kibana)
+  # ============================================================
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    container_name: orderflow-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=${ES_JAVA_OPTS:--Xms512m -Xmx512m}
+      - cluster.name=orderflow-cluster
+      - node.name=orderflow-es
+    ports:
+      - "${ELASTICSEARCH_PORT:-9200}:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - orderflow-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -qE 'yellow|green'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.13.0
+    container_name: orderflow-logstash
+    restart: unless-stopped
+    environment:
+      - LS_JAVA_OPTS=${LS_JAVA_OPTS:--Xms256m -Xmx256m}
+      - xpack.monitoring.enabled=false
+    ports:
+      - "${LOGSTASH_TCP_PORT:-5044}:5044"
+    volumes:
+      - ./logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+    networks:
+      - orderflow-net
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.0
+    container_name: orderflow-kibana
+    restart: unless-stopped
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - xpack.security.enabled=false
+      - SERVER_PUBLICBASEURL=http://localhost:5601
+    ports:
+      - "${KIBANA_PORT:-5601}:5601"
+    networks:
+      - orderflow-net
+    depends_on:
+      elasticsearch:
+        condition: service_healthy

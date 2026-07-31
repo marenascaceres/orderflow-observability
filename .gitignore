@@ -1,0 +1,35 @@
+# Variables de entorno locales (nunca subir al repo)
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs locales
+*.log
+logs/
+
+# Docker
+.docker-compose.override.yml
+
+# Entregables locales de los alumnos
+entregable_sesion*.md
+!scripts/entregable_sesion*_template.md
+screenshots/

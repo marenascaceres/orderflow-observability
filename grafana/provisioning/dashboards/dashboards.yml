@@ -1,0 +1,10 @@
+# ============================================================
+# Grafana - Provisioning de dashboards
+# ============================================================
+# Sesion 4 completa esto con dashboards reales. Por ahora
+# vacio para que Grafana arranque sin errores.
+# ============================================================
+
+apiVersion: 1
+
+providers: []

@@ -1,0 +1,28 @@
+# ============================================================
+# Grafana - Provisioning de datasources
+# ============================================================
+# Carga automatica al arrancar Grafana. Los alumnos veran
+# Prometheus ya configurado sin tener que hacerlo a mano.
+# ============================================================
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      timeInterval: "15s"
+
+  - name: Elasticsearch
+    type: elasticsearch
+    access: proxy
+    url: http://elasticsearch:9200
+    editable: true
+    jsonData:
+      index: "orderflow-logs-*"
+      timeField: "@timestamp"
+      esVersion: "8.0.0"

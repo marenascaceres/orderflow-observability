@@ -1,0 +1,8 @@
+# ============================================================
+# Prometheus - Reglas de alerta
+# ============================================================
+# Este archivo se completa en la Sesion 5. Por ahora esta vacio
+# intencionalmente para que Prometheus arranque sin errores.
+# ============================================================
+
+groups: []

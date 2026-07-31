@@ -1,0 +1,50 @@
+# ============================================================
+# Prometheus - Configuracion para OrderFlow
+# ============================================================
+# Los targets se scrapean cada 15s. Ajustar segun necesidad.
+# ============================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: orderflow
+
+# --- Alertmanager ---
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# --- Reglas de alerta ---
+# Sesion 5 completa este archivo con reglas reales.
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+# --- Targets a scrapear ---
+scrape_configs:
+
+  # Prometheus se scrapea a si mismo
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090
+
+  # Order Generator (Python)
+  - job_name: order-generator
+    static_configs:
+      - targets:
+          - order-generator:8000
+        labels:
+          service: generator
+          component: pipeline
+
+  # Order Processor (Python) - el servicio instrumentado
+  - job_name: order-processor
+    static_configs:
+      - targets:
+          - order-processor:8001
+        labels:
+          service: processor
+          component: pipeline
