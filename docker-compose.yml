@@ -204,7 +204,6 @@ services:
     restart: unless-stopped
     environment:
       - LS_JAVA_OPTS=${LS_JAVA_OPTS:--Xms256m -Xmx256m}
-      - xpack.monitoring.enabled=false
     ports:
       - "${LOGSTASH_TCP_PORT:-5044}:5044"
     volumes:
