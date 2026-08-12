@@ -1,211 +1,350 @@
-# Sesión 1 — Fundamentos de monitoreo y levantamiento del stack
+# Manual de práctica — Sesión 1
 
-**Duración:** 2 horas
-**Modalidad:** sincrónica online
+## Fundamentos de monitoreo y levantamiento del stack
+
 **Capítulo 1:** Observabilidad y captura de datos operativos
+**Modalidad:** sincrónica online
+
+> Este manual contiene **todo lo que vas a ejecutar** en la sesión. Las
+> diapositivas explican la teoría; los comandos y las consultas salen de aquí.
+> Si algo de la pantalla no coincide con este documento, manda este documento.
 
 ---
 
-## Objetivos de aprendizaje
+## Qué vas a construir hoy
 
-Al terminar esta sesión, serás capaz de:
+Hoy no construyes: **verificas y exploras**. El stack ya lo levantaste con la
+*Guía de Instalación* antes de esta clase. La sesión de hoy sirve para tres cosas:
 
-1. Explicar los tres pilares de la observabilidad y la diferencia entre monitoreo y observabilidad.
-2. Identificar qué hace cada componente del stack (Prometheus, Alertmanager, ELK, Grafana).
-3. Usar comandos básicos de Docker y `docker compose` para levantar, inspeccionar y detener servicios.
-4. Levantar el stack completo de **OrderFlow** en tu equipo y verificar que los 10 servicios respondan.
-5. Describir el caso OrderFlow y qué se monitorea en cada etapa del pipeline.
+1. Confirmar que tu entorno está sano.
+2. Entender qué hace cada uno de los 10 servicios y cómo se conectan.
+3. Ver por primera vez, con tus ojos, una métrica y un log del mismo suceso.
 
----
+Al terminar serás capaz de:
 
-## Antes de la sesión
-
-- Instalar Docker Desktop siguiendo la guía asincrónica entregada por el docente.
-- Verificar que `docker --version` y `docker compose version` funcionan.
-- Tener este repositorio clonado (o al menos la URL a mano).
-
----
-
-## Los 3 pilares de la observabilidad
-
-| Pilar        | Responde                     | Herramienta en este curso |
-|--------------|------------------------------|---------------------------|
-| **Métricas** | ¿QUÉ está pasando?           | Prometheus + Grafana      |
-| **Logs**     | ¿POR QUÉ está pasando?       | Logstash + Elasticsearch + Kibana |
-| **Trazas**   | ¿DÓNDE exactamente ocurrió?  | (no cubierto en este curso) |
+- Explicar los tres pilares de la observabilidad y la diferencia entre monitoreo y observabilidad.
+- Identificar qué hace cada componente del stack y en qué etapa del pipeline actúa.
+- Usar los comandos de `docker compose` para inspeccionar servicios en marcha.
+- Leer el endpoint `/metrics` de un servicio y ejecutar tu primera consulta en Prometheus.
+- Encontrar en Kibana el log del mismo suceso que acabas de ver como métrica.
 
 ---
 
-## El caso OrderFlow
+## Punto de partida
 
-Simulamos el pipeline de datos de una empresa de e-commerce. El **generator** produce órdenes sintéticas, las encola en **Redis**, el **processor** las consume, valida, procesa y persiste en **Postgres** (data warehouse).
+**Antes de esta sesión debiste completar la Guía de Instalación.** Si no la
+completaste, avísale al docente ahora: sin el stack levantado no puedes seguir la
+práctica.
 
-**KPIs del negocio que monitorearemos:**
-- **Throughput**: órdenes/segundo
-- **Latencia**: P50, P95, P99 del procesamiento
-- **Tasa de error**: % de órdenes fallidas
+Necesitas:
 
----
-
-## Los 6 comandos de Docker que necesitas
-
-```bash
-docker compose up -d              # levantar todos los servicios
-docker compose down               # detener y eliminar
-docker compose ps                 # estado de servicios
-docker compose logs <servicio>    # ver logs
-docker compose logs -f <servicio> # logs en tiempo real
-docker compose restart <servicio> # reiniciar un servicio
-```
+- Docker Desktop corriendo (el icono de la ballena fijo, no animado).
+- El repositorio clonado y con el archivo `.env` creado.
+- Los 10 servicios habiendo arrancado al menos una vez sin errores.
 
 ---
 
-## Práctica guiada — 40 minutos
+## Las tres cajas vacías
 
-### Paso 1 — Verificar Docker
+Esto es importante para entender cómo avanza el curso, y conviene que lo tengas
+claro desde hoy.
 
-```bash
-docker --version
-docker compose version
-```
+Al levantar el stack arrancan **10 servicios**, pero tres de ellos están
+deliberadamente **vacíos**:
 
-### Paso 2 — Clonar el repo (si no lo hiciste antes)
+| Servicio | Hoy | Se llena en |
+|---|---|---|
+| **Kibana** | Sin ningún Data View. No muestra nada. | Sesión 3 |
+| **Grafana** | Con la fuente de datos conectada, pero sin un solo panel. | Sesión 4 |
+| **Alertmanager** | Corriendo, pero sin ninguna regla que le envíe alertas. | Sesión 5 |
 
-```bash
-git clone https://github.com/marenascaceres/orderflow-observability.git
-cd orderflow-observability
-```
+No están rotos. Están esperándote. Cada sesión del curso llena una de esas cajas,
+y en la Sesión 2 además le añadirás al stack tres servicios nuevos.
 
-### Paso 3 — Recorrido por la estructura del repo
+Al final del curso pasarás de 10 a 15 servicios, y ninguno de los que hay hoy
+desaparecerá. **Todo lo que construyas sigue vivo hasta la última sesión.**
 
-Abrir en VS Code:
+---
 
-```bash
-code .
-```
+## Bloque 1 — Verificación rápida
 
-Explorar:
-- `docker-compose.yml` — los 10 servicios definidos
-- `services/order-generator/` y `services/order-processor/` — código Python
-- `prometheus/prometheus.yml` — configuración de scraping
-- `logstash/pipeline/orderflow.conf` — pipeline de ingesta de logs
-- `grafana/provisioning/` — datasources precargados
+### Paso 1 — Levantar el stack
 
-### Paso 4 — Copiar variables de entorno
-
-```bash
-cp .env.example .env
-```
-
-En Windows PowerShell: `Copy-Item .env.example .env`
-
-### Paso 5 — Levantar el stack
+Desde la carpeta del proyecto:
 
 ```bash
 docker compose up -d
 ```
 
-La primera vez descarga ~2 GB en imágenes. Puede tomar entre 5 y 10 minutos según la conexión.
+Como ya descargaste las imágenes al hacer la guía de instalación, esta vez debe
+tardar unos 30 segundos, no 10 minutos.
 
-### Paso 6 — Verificar salud de los servicios
+### Paso 2 — Esperar y comprobar
+
+Espera unos 60 segundos (Elasticsearch arranca lento) y ejecuta:
 
 ```bash
 docker compose ps
 ```
 
-Todos deben aparecer con estado `Up` o `healthy`. Elasticsearch puede tomar 30-60 segundos adicionales.
+**Qué debes ver:** 10 filas. Todas con `Up` o `healthy` en la columna STATUS.
+Ninguna con `Restarting` ni `Exited`.
 
-### Paso 7 — Verificar cada servicio (checklist)
-
-| # | Servicio        | URL o comando                                          | Qué debes ver                        |
-|:-:|-----------------|--------------------------------------------------------|--------------------------------------|
-| 1 | Prometheus      | http://localhost:9090                                  | UI con menú Status → Targets         |
-| 2 | Alertmanager    | http://localhost:9093                                  | Lista de alertas (vacía)             |
-| 3 | Grafana         | http://localhost:3000                                  | Login (admin/admin)                  |
-| 4 | Elasticsearch   | http://localhost:9200                                  | JSON con `"cluster_name"`            |
-| 5 | Kibana          | http://localhost:5601                                  | Pantalla de bienvenida               |
-| 6 | order-generator | http://localhost:8000/metrics                          | Métricas en texto plano              |
-| 7 | order-processor | http://localhost:8001/metrics                          | Métricas en texto plano              |
-| 8 | Postgres        | `docker compose exec postgres pg_isready -U orderflow` | `accepting connections`              |
-| 9 | Redis           | `docker compose exec redis redis-cli ping`             | `PONG`                               |
-|10 | Logstash        | `docker compose logs logstash \| tail`                 | Pipeline iniciado                    |
-
-**Atajo:** puedes correr el validador automático:
+### Paso 3 — El validador
 
 ```bash
-python3 scripts/validate_setup.py
+python scripts/validate_setup.py
 ```
+
+En Mac y Linux, `python3` en lugar de `python`.
+
+**Qué debes ver:** `Todos los checks OK (12/12)`.
+
+Si algún check falla, no sigas: consulta `docs/troubleshooting.md` o levanta la
+mano. Los siguientes bloques asumen que el stack está sano.
+
+> **Si falla "Elasticsearch: índice orderflow-logs-\*"** y todo lo demás está en
+> OK, espera 30 segundos más y vuelve a correr el validador. Ese índice no existe
+> hasta que el processor manda su primer log.
 
 ---
 
-## Práctica exploratoria — 20 minutos
+## Bloque 2 — Recorrido por el pipeline
 
-### Ejercicio A — Ver el pipeline funcionando
+### Paso 4 — El camino de una orden
+
+OrderFlow simula el pipeline de datos de un e-commerce. Una orden recorre
+cuatro servicios:
+
+```
+order-generator  →  Redis  →  order-processor  →  Postgres
+   (la crea)       (la encola)   (la valida y procesa)  (la almacena)
+```
+
+Y en paralelo, cada servicio emite señales:
+
+```
+métricas  →  Prometheus  →  Grafana
+logs      →  Logstash    →  Elasticsearch  →  Kibana
+```
+
+### Paso 5 — Ver órdenes naciendo
 
 ```bash
 docker compose logs -f order-generator
 ```
 
-Deberías ver mensajes tipo:
+**Qué debes ver:** líneas de texto plano como
+
 ```
-2026-07-31 03:12:15 INFO - Order generated: id=8c4a2f9b, region=lima, items=3, total=S/127.50
+2026-08-12 03:12:15 INFO - Order generated: id=8c4a2f9b, region=lima, items=3, total=S/127.50
 ```
 
-`Ctrl+C` para salir del stream (no detiene el servicio).
+`Ctrl+C` para salir del stream. **Esto no detiene el servicio**, solo deja de
+mostrarte sus logs.
 
-Ahora el processor:
+### Paso 6 — Ver órdenes procesándose
+
 ```bash
 docker compose logs -f order-processor
 ```
 
-Verás eventos **JSON estructurados** tipo:
+**Qué debes ver:** eventos JSON estructurados, muy distintos de los anteriores:
+
 ```json
-{"timestamp":"2026-07-31T03:12:15Z","level":"INFO","event":"order_processed","order_id":"8c4a2f9b-...","region":"lima","total_amount":127.50}
+{"timestamp":"2026-08-12 03:12:15,842","level":"INFO","service":"processor","message":"Order processed","event":"order_processed","order_id":"8c4a2f9b","region":"lima","total_amount":127.5}
 ```
 
-> Nota la diferencia: el generator emite logs de texto plano, el processor emite JSON estructurado. En Sesión 3 vamos a ver por qué el JSON es superior para análisis.
+`Ctrl+C` para salir.
 
-### Ejercicio B — Primera métrica en Prometheus
+> **Fíjate en la diferencia.** El generator escribe texto plano; el processor
+> escribe JSON. Los dos dicen cosas parecidas, pero solo el segundo se puede
+> consultar por campo. En la Sesión 3 verás por qué eso lo cambia todo.
 
-1. Abrir http://localhost:9090
-2. Ir a **Status → Targets** y verificar que `order-generator` y `order-processor` están en verde (**UP**).
-3. Ir a **Graph**, escribir `orderflow_orders_processed_total` y hacer click en **Execute**.
-4. Click en la pestaña **Graph** — verás una línea creciendo.
+### Paso 7 — Ver órdenes almacenadas
 
-### Ejercicio C — Primeros logs en Kibana
+```bash
+docker compose exec postgres psql -U orderflow -d orderflow_dw -c "SELECT COUNT(*) FROM orders;"
+```
 
-1. Abrir http://localhost:5601
-2. Menú lateral → **Discover**
-3. Crear un **Data View**:
-   - Name: `orderflow-logs`
-   - Index pattern: `orderflow-logs-*`
-   - Timestamp field: `@timestamp`
-4. Guardar. Volverás a Discover con los logs apareciendo en tiempo real.
+**Qué debes ver:** un número mayor que cero, que crece si repites el comando.
 
-> Si no ves logs: verifica en el selector de tiempo (arriba a la derecha) que el rango sea "Last 15 minutes" y refresca.
+Y para ver algunas de verdad:
 
----
-
-## Entregable
-
-Al finalizar la sesión, sube al LMS un archivo `entregable_sesion1.md` (puedes usar la plantilla de `scripts/entregable_sesion1_template.md`) que contenga:
-
-1. Screenshot de `docker compose ps` con los 10 servicios en `Up`/`healthy`.
-2. Tabla completada con: servicio, URL/comando, estado verificado, y qué rol cumple en OrderFlow.
-3. Respuesta breve (2-4 líneas): *¿Por qué necesitamos métricas Y logs en el mismo pipeline, y no solo uno de los dos?*
-
-**Rúbrica:**
-- Screenshot correcto — 40 pts
-- Tabla completa y correcta — 40 pts
-- Reflexión propia y coherente — 20 pts
+```bash
+docker compose exec postgres psql -U orderflow -d orderflow_dw -c "SELECT order_id, region, total_amount, processed_at FROM orders ORDER BY processed_at DESC LIMIT 5;"
+```
 
 ---
 
-## Tarea previa a la Sesión 2
+## Bloque 3 — Tu primera métrica
 
-1. **Bajar el stack** para liberar RAM:
+### Paso 8 — El endpoint crudo
+
+Antes de mirar Prometheus, mira lo que Prometheus mira. Abre en el navegador:
+
+```
+http://localhost:8001/metrics
+```
+
+**Qué debes ver:** un muro de texto plano. No es un error: así se ve una métrica
+antes de que nadie la procese. Busca (`Ctrl+F`) la palabra `orderflow`.
+
+Cada métrica tiene tres líneas:
+
+```
+# HELP orderflow_orders_processed_total Total de ordenes procesadas exitosamente
+# TYPE orderflow_orders_processed_total counter
+orderflow_orders_processed_total{region="lima"} 143.0
+```
+
+`HELP` es la descripción, `TYPE` es el tipo, y la tercera línea es el valor
+actual para una combinación concreta de etiquetas.
+
+> **Éste es el modelo pull de Prometheus.** El servicio no envía nada a nadie:
+> se limita a publicar su estado en una página web, y Prometheus pasa a leerla
+> cada 15 segundos. Si Prometheus se cae, el servicio ni se entera.
+
+### Paso 9 — Los targets
+
+Abre `http://localhost:9090` y ve a **Status → Targets**.
+
+**Qué debes ver:** tres targets en verde (`UP`): `prometheus`, `order-generator`
+y `order-processor`. Fíjate en la columna **Last Scrape**: nunca pasa de 15
+segundos, porque ése es el `scrape_interval` configurado.
+
+> Hoy son 3 targets. En la Sesión 2 serán 6.
+
+### Paso 10 — Tu primera consulta
+
+Ve a la pestaña **Graph** y escribe:
+
+```promql
+orderflow_orders_processed_total
+```
+
+Pulsa **Execute** y luego la pestaña **Graph**.
+
+**Qué debes ver:** una línea que solo sube. Nunca baja. Eso es un **Counter**:
+un contador acumulativo que solo se reinicia si el servicio se reinicia.
+
+Ahora prueba:
+
+```promql
+orderflow_queue_depth
+```
+
+**Qué debes ver:** una línea que sube y baja. Eso es un **Gauge**: una medición
+instantánea.
+
+> **El prefijo `orderflow_` es obligatorio.** Si escribes
+> `orders_processed_total` sin el prefijo, Prometheus no encuentra nada y te
+> devuelve "Empty query result". Lo verás pasar muchas veces en el curso: es el
+> error número uno. Todos los nombres están en `docs/metricas.md`.
+
+---
+
+## Bloque 4 — El mismo suceso, visto como log
+
+### Paso 11 — Crear el Data View de Kibana
+
+Abre `http://localhost:5601` y ve al menú lateral → **Discover**.
+
+Kibana te dirá que no hay ningún Data View. Créalo:
+
+1. Click en **Create data view**.
+2. **Name:** `orderflow-logs`
+3. **Index pattern:** `orderflow-logs-*` — debe aparecerte abajo que coincide con al menos un índice.
+4. **Timestamp field:** `@timestamp`
+5. **Save data view to Kibana**.
+
+**Qué debes ver:** vuelves a Discover y aparecen logs. Si no ves ninguno,
+comprueba arriba a la derecha que el rango de tiempo diga **Last 15 minutes** y
+pulsa el botón **Refresh**.
+
+### Paso 12 — Encontrar un error concreto
+
+En la barra de búsqueda de Discover, escribe:
+
+```
+event: "order_failed"
+```
+
+**Qué debes ver:** solo las órdenes que fallaron. En el panel izquierdo, haz
+click en el campo `reason` y luego en **Visualize**: verás el desglose de por qué
+están fallando.
+
+### Paso 13 — Unir los dos mundos
+
+Éste es el punto de toda la sesión. Compara:
+
+| En Prometheus | En Kibana |
+|---|---|
+| `orderflow_orders_failed_total` te dice **cuántas** órdenes fallaron | `event: "order_failed"` te dice **cuáles** fallaron y **por qué** |
+| Sirve para alertar: "la tasa de error pasó del 10 %" | Sirve para investigar: "la orden a3f9 falló por `postgres_timeout` a las 03:47:22" |
+| Barato de guardar: un número por serie | Caro de guardar: un documento por suceso |
+
+Una métrica te dice que algo va mal. Un log te dice qué. **Necesitas los dos**, y
+ése es el motivo por el que este stack tiene dos ramas.
+
+---
+
+## Ejercicios (haz estos tú solo)
+
+### Ejercicio A — Cuenta las regiones
+
+En Prometheus, ejecuta `orderflow_orders_processed_total` y anota cuántas
+regiones distintas aparecen y cómo se llaman.
+
+### Ejercicio B — Encuentra la métrica del generator
+
+El generator también expone métricas, en el puerto 8000. Encuentra el nombre de
+la métrica que cuenta las órdenes **generadas** (no las procesadas) y ejecútala
+en Prometheus.
+
+*Pista: `http://localhost:8000/metrics` y busca `# HELP`.*
+
+### Ejercicio C — La pregunta incómoda
+
+Compara los valores de `orderflow_orders_generated_total` y
+`orderflow_orders_processed_total`. ¿Son iguales? ¿Deberían serlo?
+
+Escribe en dos líneas por qué difieren.
+
+---
+
+## Si algo falla
+
+| Síntoma | Causa probable | Solución |
+|---|---|---|
+| `docker compose ps` muestra menos de 10 filas | El stack no terminó de arrancar | Espera 60 s y repite. Si sigue, `docker compose up -d` otra vez |
+| Un servicio en `Restarting` | Suele ser Elasticsearch por falta de memoria | Cierra aplicaciones; revisa `ES_JAVA_OPTS` en `.env` |
+| Prometheus no muestra targets en verde | Los servicios Python aún arrancan | Espera 30 s y refresca la página de Targets |
+| Una consulta devuelve "Empty query result" | Falta el prefijo `orderflow_` | Consulta `docs/metricas.md` |
+| Discover en Kibana sale vacío | El rango de tiempo o el índice | Pon "Last 15 minutes" y pulsa Refresh |
+| `psql` dice que no existe la tabla `orders` | Postgres se inicializó mal | `docker compose down -v` y `docker compose up -d` (borra los datos) |
+
+Para cualquier otro problema: `docs/troubleshooting.md`.
+
+---
+
+## Antes de la Sesión 2
+
+1. **Baja el stack** para liberar memoria:
+
    ```bash
    docker compose down
    ```
-2. **Leer** [docs/prometheus_intro.md](prometheus_intro.md) — 10 minutos de lectura.
-3. **Subir el entregable** al LMS antes de que empiece la Sesión 2.
+
+   Sin `-v`. Ese flag borraría los datos.
+
+2. **Lee** `docs/prometheus_intro.md`. La Sesión 2 lo da por sabido.
+
+3. **Hojea** `docs/metricas.md`. No hay que memorizarlo, pero sí saber que existe:
+   lo vas a consultar en todas las sesiones que quedan.
+
+4. **Completa el entregable** con la plantilla `scripts/entregable_template.md`.
+
+> En la Sesión 2 vas a añadir tres servicios nuevos al stack y vas a escribir tu
+> primera métrica en Python. Ven con el repositorio actualizado: te diremos el
+> comando al empezar.

@@ -36,15 +36,4 @@ _(Marcar la columna "Verificado" con ✅ y completar el rol de cada servicio en 
 
 **Pregunta:** ¿Por qué necesitamos métricas Y logs en el mismo pipeline, y no solo uno de los dos?
 
-_(Escribe tu respuesta en 2 a 4 líneas, con tus palabras. No copies de fuentes externas — quiero tu razonamiento.)_
-
----
-
-## Rúbrica de evaluación
-
-| Criterio                                                | Puntos |
-|---------------------------------------------------------|-------:|
-| Screenshot correcto (10 servicios en Up/healthy)        |     40 |
-| Tabla completa y correcta                               |     40 |
-| Reflexión propia y coherente (no copiada)               |     20 |
-| **Total**                                               | **100**|
+_(Escribe tu respuesta en 2 a 4 líneas, con tus palabras.)_

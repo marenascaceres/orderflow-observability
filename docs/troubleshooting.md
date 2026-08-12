@@ -120,11 +120,150 @@ El processor tolera que Logstash no esté disponible (no bloquea el pipeline pri
 
 ---
 
+## Servicios que aparecen más adelante
+
+Los de esta sección solo existen si ya hiciste la sesión que los añade. Si aún no
+has llegado, que no aparezcan es lo correcto.
+
+### El exporter de Postgres o de Redis está `DOWN` (Sesión 2)
+
+Comprueba primero si el exporter responde de verdad:
+
+```bash
+curl -s http://localhost:9187/metrics | head -5     # postgres
+curl -s http://localhost:9121/metrics | head -5     # redis
+```
+
+Si no responde, casi siempre es la contraseña: el `DATA_SOURCE_NAME` del
+`postgres-exporter` se construye con las variables de tu `.env`. Si cambiaste
+`POSTGRES_PASSWORD` después de la primera corrida, Postgres conserva la vieja
+dentro del volumen y el exporter no entra.
+
+```bash
+docker compose logs postgres-exporter --tail 20
+```
+
+### La métrica de Postgres del dashboard sale vacía (Sesión 4)
+
+Los nombres que expone un exporter dependen de su versión y de qué colectores
+tenga activos. **No los des por sabidos: pregúntaselos.**
+
+```bash
+curl -s http://localhost:9187/metrics | grep "^# HELP pg_stat_database"
+```
+
+Usa el nombre que salga de ahí. Lo mismo con `redis_` en el puerto 9121.
+
+### No llegan los logs del generator (Sesión 3)
+
+El driver de logging de Docker se aplica al **crear** el contenedor, no al
+reiniciarlo:
+
+```bash
+docker compose up -d --force-recreate order-generator
+```
+
+Y recuerda que ese driver corre en el demonio de Docker, **fuera** de la red de
+Compose. Por eso apunta a `udp://localhost:5000` y no a `udp://logstash:5000`,
+que es lo que uno escribiría por instinto.
+
+### Aparece `_grokparsefailure` o `_dateparsefailure` (Sesión 3)
+
+Ninguno de los dos hace fallar nada: el documento entra en Elasticsearch igual,
+pero mal. Por eso hay que buscarlos a propósito.
+
+```bash
+curl -s "http://localhost:9200/orderflow-logs-*/_count?q=tags:_grokparsefailure"
+curl -s "http://localhost:9200/orderflow-logs-*/_count?q=tags:_dateparsefailure"
+```
+
+- **grok**: el patrón no casa con el texto. Compara el patrón con una línea real.
+- **date**: el formato de fecha no está contemplado. El processor emite
+  `2026-08-12 03:12:15,842` — separador espacio y coma decimal, que **no** es
+  ISO8601 estricto. Si el filtro `date` solo declara `ISO8601`, falla en silencio
+  y los logs aparecen desplazados unos segundos.
+
+### Los paneles dicen `Datasource not found` (Sesión 4)
+
+El dashboard busca el datasource por su `uid`. Comprueba que los tuyos lo tengan
+fijado:
+
+```bash
+docker compose up -d --force-recreate grafana
+```
+
+Si sigue, mira que `grafana/provisioning/datasources/datasources.yml` tenga
+`uid: prometheus` y `uid: elasticsearch`.
+
+### No aparece la carpeta `OrderFlow` en Dashboards (Sesión 4)
+
+El provider relee la carpeta cada 30 segundos, así que espera antes de dudar. Si
+pasado ese tiempo no aparece, suele ser un error de sintaxis en el JSON:
+
+```bash
+docker compose logs grafana --tail 30 | grep -i error
+```
+
+### Una alerta nunca sale de `Inactive` (Sesión 5)
+
+Una regla con un nombre de métrica inexistente **no da error**: simplemente no
+dispara nunca. Es la peor forma de fallar que puede tener una alerta.
+
+Copia la `expr` de la regla, pégala en la pestaña **Graph** de Prometheus y mira
+si devuelve algo. Si devuelve vacío, el problema está en el nombre. Compáralo con
+`docs/metricas.md`.
+
+Recuerda también que la alerta tarda: `rate([5m])` más `for: 2m` suman varios
+minutos reales antes del disparo.
+
+### La alerta llega al webhook pero no al correo (Sesión 5)
+
+Es el fallo silencioso clásico de Alertmanager. Si la última ruta lleva
+`matchers: severity=~"warning|info"`, una alerta `critical` no casa con ninguna
+ruta hermana después de la primera y nunca llega al correo.
+
+La ruta final debe ir **sin matchers**, para que recoja todo lo que llegue hasta
+ella.
+
+### MailHog vacío (Sesión 5)
+
+```bash
+curl -X POST http://localhost:9093/-/reload
+docker compose logs alertmanager --tail 20
+```
+
+Un `dial tcp: connection refused` significa que MailHog aún estaba arrancando.
+Espera 30 segundos.
+
+### Los notebooks no encuentran las librerías (Sesión 6)
+
+```bash
+pip install -r notebooks/requirements.txt
+```
+
+Si el cliente de Elasticsearch da `ApiError` o se queja de la versión, es que no
+coincide la serie mayor con la del servidor. El compose levanta Elasticsearch 8.x,
+así que el cliente tiene que ser 8.x.
+
+### Una consulta desde Python devuelve `[]` (Sesión 6)
+
+Prometheus **no da error** cuando la métrica no existe: devuelve una lista vacía,
+igual que si existiera y no tuviera datos. Compruébalo:
+
+```bash
+curl -s http://localhost:9090/api/v1/label/__name__/values | grep orderflow
+```
+
+El notebook 1 trae una función `existe()` para esto mismo.
+
+---
+
 ## Rendimiento
 
 ### El laptop se pone lento con el stack corriendo
 
-10 servicios consumen ~4-5 GB de RAM. Recomendaciones:
+El stack completo consume ~4-5 GB de RAM (más al final del curso, cuando son 15
+servicios). Recomendaciones:
 
 - Cierra apps innecesarias (Chrome con 50 pestañas, Slack, Teams).
 - Baja el heap de Elasticsearch en `.env` a 384m:

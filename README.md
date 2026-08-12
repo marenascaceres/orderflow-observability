@@ -4,7 +4,21 @@ Repositorio de práctica del curso **"Monitoreo y Registro con Python"** de BSG 
 
 Este proyecto simula el pipeline de datos de una empresa ficticia de e-commerce (**OrderFlow**) y expone toda la infraestructura de observabilidad necesaria para monitorearlo: métricas con Prometheus, logs con ELK, dashboards con Grafana y Kibana, y alertas con Alertmanager.
 
-Todo corre en **10 contenedores Docker** en tu equipo local.
+Todo corre en contenedores Docker en tu equipo local. **El stack crece durante el
+curso**: arranca con 10 servicios en la Sesión 1 y termina con 15 en la Sesión 6.
+
+Cada sesión añade capacidades sobre lo que ya funciona. Nunca se reemplaza
+configuración ni se vuelve atrás: si algo funcionaba en la Sesión 2, sigue
+funcionando en la 6.
+
+| Al terminar la sesión | Servicios | Qué se añadió |
+|:---:|:---:|---|
+| 1 | 10 | El pipeline y las herramientas, tres de ellas vacías a propósito |
+| 2 | 13 | `postgres-exporter`, `redis-exporter`, `pushgateway` |
+| 3 | 13 | Los dos orígenes de logs llegando a Elasticsearch |
+| 4 | 13 | Dashboards provisionados desde archivo |
+| 5 | 15 | `mailhog`, `webhook-receiver` y las alertas |
+| 6 | 15 | Los notebooks que consultan todo desde Python |
 
 ---
 
@@ -13,8 +27,17 @@ Todo corre en **10 contenedores Docker** en tu equipo local.
 - **Docker Desktop** (Windows/Mac) o **Docker Engine + Compose** (Linux) — versión >= 24
 - **RAM libre**: 6 GB mínimo (recomendado 8 GB)
 - **Disco libre**: 10 GB (para imágenes + datos)
-- **Puertos libres**: 3000, 5044, 5432, 5601, 6379, 8000, 8001, 9090, 9093, 9200
-- **Python 3.11+** (solo para ejecutar el script de validación; no necesario para el stack)
+- **Python 3.11+** (para los validadores y, en la Sesión 6, los notebooks)
+
+**Puertos libres.** Los siete primeros hacen falta desde la Sesión 1; el resto se
+van usando conforme el stack crece:
+
+| Sesión | Puertos |
+|:---:|---|
+| 1 | 3000, 5044, 5432, 5601, 6379, 8000, 8001, 9090, 9093, 9200 |
+| 2 | 9091 (pushgateway), 9121 (redis-exporter), 9187 (postgres-exporter) |
+| 3 | 5000/udp (syslog de Logstash) |
+| 5 | 1025 y 8025 (MailHog), 5001 (webhook-receiver) |
 
 > **Guía de instalación paso a paso**: ver el PDF de instalación entregado por el docente antes de la primera sesión.
 
@@ -56,6 +79,16 @@ Después de ~1 minuto, todos los servicios deben estar `Up` o `healthy`.
 | order-generator | http://localhost:8000/metrics    | -              |
 | order-processor | http://localhost:8001/metrics    | -              |
 
+Y los que aparecen más adelante:
+
+| Servicio | URL | Desde |
+|---|---|:---:|
+| postgres-exporter | http://localhost:9187/metrics | Sesión 2 |
+| redis-exporter | http://localhost:9121/metrics | Sesión 2 |
+| Pushgateway | http://localhost:9091 | Sesión 2 |
+| MailHog (buzón de prueba) | http://localhost:8025 | Sesión 5 |
+| webhook-receiver | http://localhost:5001/health | Sesión 5 |
+
 ---
 
 ## Arquitectura
@@ -94,42 +127,65 @@ Alertmanager  Grafana   Elasticsearch
 
 ```
 orderflow-observability/
-├── docker-compose.yml       # Definición de los 10 servicios
+├── docker-compose.yml       # Definición de los servicios
 ├── .env.example             # Plantilla de variables de entorno
 ├── README.md                # Este archivo
 │
 ├── services/
-│   ├── order-generator/     # Servicio Python que genera órdenes
-│   └── order-processor/     # Servicio Python que procesa e instrumenta
+│   ├── order-generator/     # Genera órdenes sintéticas
+│   ├── order-processor/     # Consume, valida, persiste e instrumenta
+│   └── webhook-receiver/    # Recibe alertas de Alertmanager (Sesión 5)
 │
-├── prometheus/              # Config de scraping y reglas de alerta
-├── alertmanager/            # Config de enrutamiento de alertas
+├── prometheus/              # Scraping (prometheus.yml) y reglas (alerts.yml)
+├── alertmanager/            # Enrutamiento e inhibición de alertas
 ├── logstash/                # Pipeline de ingesta de logs
-├── grafana/                 # Provisioning de datasources y dashboards
+├── grafana/
+│   ├── provisioning/        # Datasources, dashboards y alertas por archivo
+│   └── dashboards/          # Tus dashboards en JSON (Sesión 4)
 ├── postgres/                # Init SQL del data warehouse
 │
+├── notebooks/               # Los cuatro notebooks de la Sesión 6
+│
 ├── docs/
-│   ├── sesion_01.md         # Guía del alumno para Sesión 1
-│   ├── prometheus_intro.md  # Lectura previa a Sesión 2
+│   ├── metricas.md          # GLOSARIO CANÓNICO. La fuente de verdad
+│   ├── sesion_01.md … 06.md # Manuales de práctica
+│   ├── soluciones/          # Se publican después de cada sesión
+│   ├── mini_proyecto.md     # El encargo final
+│   ├── prometheus_intro.md  # Lectura previa a la Sesión 2
+│   ├── logstash_intro.md    # Lectura previa a la Sesión 3
+│   ├── grafana_kibana_intro.md
 │   └── troubleshooting.md   # Errores comunes y soluciones
 │
 └── scripts/
-    ├── validate_setup.py    # Health-check automático del stack
-    └── entregable_sesion1_template.md
+    ├── validate_setup.py    # Health-check del stack (Sesión 1)
+    ├── validate_sesion2.py … validate_sesion6.py
+    └── entregable_template.md
 ```
+
+> **`docs/metricas.md` manda.** Si un nombre de métrica que ves en una
+> diapositiva no coincide con el que hay ahí, el bueno es el del glosario. Todas
+> las métricas propias llevan el prefijo `orderflow_`; las de los exporters
+> llevan `pg_` o `redis_`.
 
 ---
 
 ## Progresión del curso por sesiones
 
-| Sesión | Tema                                         | Qué se agrega/modifica en el repo                       |
-|:------:|----------------------------------------------|---------------------------------------------------------|
-| **1**  | Fundamentos + levantamiento del stack        | (nada — solo se usa lo que ya está)                     |
-| **2**  | Métricas con Prometheus y exporters          | Se explora `processor.py`; PromQL en `docs/`            |
-| **3**  | Logs con Logstash y Elasticsearch            | Se editan filtros de `logstash/pipeline/`               |
-| **4**  | Dashboards en Grafana y Kibana               | Se agregan JSONs en `grafana/dashboards/` y Kibana obj  |
-| **5**  | Alertas con Alertmanager y Grafana           | Se completan `prometheus/alerts.yml` y `alertmanager/`  |
-| **6**  | Optimización + integración Python            | Se agregan notebooks en `notebooks/`                    |
+| Sesión | Tema | Qué cambia en el repo |
+|:------:|---|---|
+| **1** | Fundamentos y levantamiento del stack | Se verifica lo que ya está; Kibana, Grafana y Alertmanager quedan vacíos a propósito |
+| **2** | Métricas con Prometheus y exporters | +3 servicios, +3 scrape jobs, y tú instrumentas un `Counter` en `processor.py` |
+| **3** | Logs con Logstash y Elasticsearch | Segundo origen de logs por syslog; grok estructura el texto plano |
+| **4** | Visualización en Grafana y Kibana | Provisioning de dashboards; tu dashboard pasa a ser un archivo del repo |
+| **5** | Alertas y notificaciones | +2 servicios; reglas, enrutamiento, inhibición y notificación real |
+| **6** | Optimización e integración con Python | Los notebooks consultan Prometheus y Elasticsearch desde código |
+
+Cada sesión tiene su tag en git. Para ver el repositorio tal como quedó al
+terminar una sesión concreta:
+
+```bash
+git checkout sesion-3    # y para volver al final: git checkout main
+```
 
 ---
 
