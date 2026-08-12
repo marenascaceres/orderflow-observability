@@ -230,3 +230,58 @@ services:
     depends_on:
       elasticsearch:
         condition: service_healthy
+
+  # ============================================================
+  # SESION 2 - Exporters y Pushgateway
+  # ============================================================
+  # Un exporter es un traductor: habla el protocolo nativo de un
+  # servicio (Postgres, Redis) y publica sus metricas internas en
+  # el formato que Prometheus sabe leer. Sirven para monitorear
+  # software que no podemos instrumentar porque no es nuestro.
+  # ============================================================
+
+  # Traduce las metricas internas de Postgres (conexiones, tamano
+  # de base, transacciones, locks). Reutiliza las credenciales que
+  # ya estan en .env: no hay que crear un usuario nuevo.
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: orderflow-postgres-exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-orderflow}:${POSTGRES_PASSWORD:-orderflow_dev_2026}@postgres:5432/${POSTGRES_DB:-orderflow_dw}?sslmode=disable"
+    ports:
+      - "${POSTGRES_EXPORTER_PORT:-9187}:9187"
+    networks:
+      - orderflow-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Mismo patron, para Redis: memoria usada, clientes conectados,
+  # comandos por segundo, longitud de las listas.
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    container_name: orderflow-redis-exporter
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    ports:
+      - "${REDIS_EXPORTER_PORT:-9121}:9121"
+    networks:
+      - orderflow-net
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # Buzon intermedio para trabajos de corta duracion (batch, cron,
+  # ETL). Prometheus no alcanza a scrapear un script que vive 3
+  # segundos, asi que el script empuja su metrica aqui y Prometheus
+  # lee este servicio, que si esta siempre en pie.
+  pushgateway:
+    image: prom/pushgateway:v1.9.0
+    container_name: orderflow-pushgateway
+    restart: unless-stopped
+    ports:
+      - "${PUSHGATEWAY_PORT:-9091}:9091"
+    networks:
+      - orderflow-net

@@ -144,6 +144,31 @@ processor_up = Gauge(
     "1 si el processor esta activo, 0 si no",
 )
 
+# ------------------------------------------------------------
+# EJERCICIO DE LA SESION 2 - Instrumentar una metrica de negocio
+# ------------------------------------------------------------
+# Todas las metricas de arriba miden INFRAESTRUCTURA: cuantas ordenes,
+# cuanto tardan, cuantas fallan. Ninguna mide NEGOCIO: cuanto dinero
+# esta moviendo el pipeline.
+#
+# Tu tarea: declarar aqui un Counter llamado
+#
+#     orderflow_order_amount_soles_total
+#
+# con la etiqueta "region", que acumule el importe de cada orden
+# procesada con exito.
+#
+# Un Counter puede incrementarse en cualquier cantidad, no solo de
+# uno en uno: .inc(127.50) es perfectamente valido.
+#
+# Cuando lo declares aqui, ve a process_one() y busca el segundo TODO.
+#
+# La solucion completa esta en docs/soluciones/sesion_02.md, pero
+# intentalo antes de mirarla.
+# ------------------------------------------------------------
+
+# TODO (Sesion 2): declara aqui el Counter orderflow_order_amount_soles_total
+
 # ============================================================
 # Conexiones
 # ============================================================
@@ -260,6 +285,11 @@ def process_one(pg_conn, order: dict) -> None:
             persist_order(pg_conn, order)
 
             orders_processed.labels(region=region).inc()
+
+            # TODO (Sesion 2): incrementa aqui tu Counter de importe.
+            # El monto de la orden esta en order["total_amount"].
+            # Recuerda que .inc() acepta un argumento numerico.
+
             log.info(
                 "Order processed",
                 extra={
