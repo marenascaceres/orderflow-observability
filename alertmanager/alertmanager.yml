@@ -1,28 +1,107 @@
 # ============================================================
-# Alertmanager - Configuracion base para OrderFlow
+# Alertmanager - Configuracion de OrderFlow
 # ============================================================
-# Sesion 5 completa este archivo con integraciones reales
-# (email, Slack, webhooks). Por ahora solo un receiver dummy
-# para que el servicio arranque sin errores.
+# Completado en la Sesion 5. Hasta la Sesion 4 este archivo tenia un
+# unico receiver vacio: Alertmanager arrancaba, pero no avisaba a
+# nadie. Era la tercera caja vacia del stack.
+#
+# Recargar sin reiniciar:
+#   curl -X POST http://localhost:9093/-/reload
+#
+# Prometheus DETECTA. Alertmanager DECIDE a quien avisar, cuando y
+# cuantas veces. Son dos trabajos distintos y por eso son dos
+# programas distintos.
 # ============================================================
 
 global:
+  # Cuanto espera antes de dar una alerta por resuelta si deja de
+  # recibir noticias de ella.
   resolve_timeout: 5m
 
+  # SMTP de MailHog, el buzon de mentira que se anadio al compose en
+  # esta sesion. No pide usuario, ni contrasena, ni TLS: por eso
+  # sirve para clase. En produccion aqui irian credenciales reales.
+  smtp_smarthost: 'mailhog:1025'
+  smtp_from: 'alertmanager@orderflow.local'
+  smtp_require_tls: false
+
+# ------------------------------------------------------------
+# Arbol de enrutamiento: que receiver atiende cada alerta.
+# ------------------------------------------------------------
+# Se recorre de arriba abajo. La primera ruta hija cuyos matchers
+# casen se lleva la alerta; si ninguna casa, se queda en la raiz.
 route:
-  group_by: ["alertname"]
-  group_wait: 10s
-  group_interval: 10s
-  repeat_interval: 1h
-  receiver: default-receiver
+  receiver: 'equipo-datos-email'
 
+  # Agrupa en una sola notificacion las alertas que comparten estas
+  # etiquetas. Sin group_by, 40 ordenes fallando podrian generar 40
+  # correos. Con el, generan uno.
+  group_by: ['alertname', 'service']
+
+  # Espera antes del primer aviso de un grupo nuevo: da margen a que
+  # lleguen alertas hermanas y viajen juntas.
+  group_wait: 30s
+  # Espera antes de avisar de cambios dentro de un grupo ya notificado.
+  group_interval: 5m
+  # Cada cuanto se repite el aviso de algo que sigue roto.
+  repeat_interval: 3h
+
+  routes:
+    # Lo critico va al webhook, que es el canal urgente, y se repite
+    # cada hora en vez de cada tres.
+    - receiver: 'guardia-webhook'
+      matchers:
+        - severity="critical"
+      group_wait: 10s
+      repeat_interval: 1h
+      # continue: true hace que la alerta siga evaluandose contra las
+      # rutas hermanas despues de coincidir aqui. Sin esto, una alerta
+      # critica llegaria al webhook y a ningun sitio mas.
+      continue: true
+
+    # Ruta final sin matchers: casa con todo lo que llegue hasta aqui.
+    # Las alertas warning e info caen directamente. Las criticas caen
+    # tambien, porque la ruta anterior las dejo continuar. Resultado:
+    # lo critico se notifica por los dos canales, y el resto solo por
+    # correo.
+    #
+    # Ojo con este detalle: si esta ruta llevara matchers de
+    # warning|info, una alerta critica no casaria con ninguna ruta
+    # hermana despues de la primera y jamas llegaria al correo. Es un
+    # fallo silencioso clasico de Alertmanager.
+    - receiver: 'equipo-datos-email'
+
+# ------------------------------------------------------------
+# Receivers: a donde se envia cada notificacion.
+# ------------------------------------------------------------
 receivers:
-  - name: default-receiver
-    # Sesion 5: reemplazar por webhook, email, Slack, etc.
+  - name: 'equipo-datos-email'
+    email_configs:
+      - to: 'equipo-datos@orderflow.local'
+        # Tambien avisa cuando la alerta se resuelve. Enterarse de
+        # que algo volvio a la normalidad es tan util como enterarse
+        # de que se rompio.
+        send_resolved: true
 
+  - name: 'guardia-webhook'
+    webhook_configs:
+      # webhook-receiver es el nombre del servicio en docker-compose.yml.
+      # Dentro de la red de Compose ese nombre resuelve solo: no hace
+      # falta IP ni localhost.
+      - url: 'http://webhook-receiver:5001/alertas'
+        send_resolved: true
+
+# ------------------------------------------------------------
+# Inhibicion: callar el ruido durante un incidente.
+# ------------------------------------------------------------
+# Si el processor esta caido (critical), la alerta de latencia alta
+# del mismo servicio (warning) no aporta nada: es una consecuencia,
+# no una causa. Esta regla la silencia mientras dure la critica.
 inhibit_rules:
-  - source_match:
-      severity: critical
-    target_match:
-      severity: warning
-    equal: ["alertname"]
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    # Solo inhibe entre alertas del MISMO servicio. Sin este equal,
+    # una critica de Postgres silenciaria los avisos de Redis.
+    equal: ['service']

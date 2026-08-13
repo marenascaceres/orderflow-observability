@@ -468,6 +468,6 @@ Para cualquier otro problema: `docs/troubleshooting.md`.
 
 3. **Completa el entregable** con la plantilla `scripts/entregable_template.md`.
 
-> En la Sesión 5 se llena la tercera y última caja: Alertmanager. El umbral rojo
-> del 15 % que pusiste hoy en el panel de tasa de error deja de ser un color y
-> pasa a ser un correo que llega solo.
+> En la Sesión 5 se llena la tercera y última caja: Alertmanager. La consulta del
+> panel de tasa de error deja de ser un color en pantalla y pasa a ser un correo
+> que llega solo, aunque no haya nadie mirando.

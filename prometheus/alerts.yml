@@ -1,8 +1,130 @@
 # ============================================================
 # Prometheus - Reglas de alerta
 # ============================================================
-# Este archivo se completa en la Sesion 5. Por ahora esta vacio
-# intencionalmente para que Prometheus arranque sin errores.
+# Anadido en la Sesion 5. Hasta la Sesion 4 este archivo tenia
+# "groups: []" y Prometheus arrancaba sin ninguna alerta.
+#
+# Se monta en el contenedor (ver docker-compose.yml):
+#   - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+# y se referencia desde prometheus.yml:
+#   rule_files:
+#     - /etc/prometheus/alerts.yml
+#
+# Recargar sin reiniciar Prometheus:
+#   curl -X POST http://localhost:9090/-/reload
+#
+# LOS NOMBRES DE METRICA NO SE ADIVINAN. Todos los que aparecen aqui
+# estan en docs/metricas.md y se pueden comprobar uno a uno en
+# http://localhost:8001/metrics. Una regla con un nombre inexistente
+# no da error: simplemente no dispara nunca, que es la peor forma de
+# fallar que puede tener una alerta.
 # ============================================================
 
-groups: []
+groups:
+
+  # ----------------------------------------------------------
+  # Grupo 1: disponibilidad de los servicios
+  # ----------------------------------------------------------
+  # 'up' es una metrica que genera el propio Prometheus por cada
+  # target: vale 1 si el ultimo scrape funciono, 0 si no. No hay que
+  # instrumentar nada para tenerla.
+  - name: orderflow_disponibilidad
+    rules:
+
+      - alert: ProcessorCaido
+        expr: up{job="order-processor"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: order-processor
+        annotations:
+          summary: "El order-processor esta caido"
+          description: >-
+            Prometheus no logra scrapear el order-processor
+            (instancia {{ $labels.instance }}) desde hace mas de 1 minuto.
+
+      - alert: GeneratorCaido
+        expr: up{job="order-generator"} == 0
+        for: 1m
+        labels:
+          severity: warning
+          service: order-generator
+        annotations:
+          summary: "El order-generator esta caido"
+          description: >-
+            El generador de ordenes no responde al scraping desde hace
+            mas de 1 minuto. El pipeline dejara de recibir ordenes nuevas.
+
+  # ----------------------------------------------------------
+  # Grupo 2: salud del procesamiento
+  # ----------------------------------------------------------
+  - name: orderflow_procesamiento
+    rules:
+
+      # Porcentaje de ordenes fallidas en los ultimos 5 minutos.
+      # Es la misma expresion del panel "Tasa de error %" de la
+      # Sesion 4: el dashboard y la alerta miran exactamente lo mismo,
+      # y eso es deliberado. Si difirieran, el grafico diria una cosa
+      # y el correo otra.
+      - alert: TasaErrorAlta
+        expr: >-
+          100 *
+          sum(rate(orderflow_orders_failed_total[5m]))
+          /
+          clamp_min(
+            sum(rate(orderflow_orders_processed_total[5m]))
+            + sum(rate(orderflow_orders_failed_total[5m])),
+            0.001
+          )
+          > 10
+        # 'for' es lo que separa una alerta util de una molesta: la
+        # condicion tiene que mantenerse 2 minutos seguidos. Un pico
+        # de 10 segundos no despierta a nadie.
+        for: 2m
+        labels:
+          severity: critical
+          service: order-processor
+        annotations:
+          summary: "Tasa de error de procesamiento por encima del 10%"
+          description: >-
+            La proporcion de ordenes fallidas es {{ printf "%.1f" $value }}%
+            en los ultimos 5 minutos (umbral: 10%).
+
+      # P95 de la latencia por encima de 1 segundo.
+      # Igual que en Grafana: el nombre termina en _bucket y el
+      # sum() conserva la etiqueta le. Sin esas dos cosas, la
+      # expresion devuelve NaN y la alerta jamas dispara.
+      - alert: LatenciaAltaP95
+        expr: >-
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(orderflow_processing_duration_seconds_bucket[5m]))
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+          service: order-processor
+        annotations:
+          summary: "Latencia p95 de procesamiento elevada"
+          description: >-
+            El percentil 95 de la latencia de procesamiento es
+            {{ printf "%.2f" $value }}s (umbral: 1s) durante los ultimos 5 min.
+
+      # ------------------------------------------------------
+      # TODO (Sesion 5) - Escribe tu la cuarta regla.
+      # ------------------------------------------------------
+      # Nombre:    SinOrdenesProcesadas
+      # Condicion: no se ha procesado NINGUNA orden en los ultimos
+      #            10 minutos. Es un atasco: el generator sigue
+      #            produciendo, pero nada sale por el otro lado.
+      # for:       10m
+      # severity:  warning
+      # service:   order-processor
+      #
+      # Pista: la tasa de un counter durante una ventana en la que no
+      # paso nada vale exactamente 0. Necesitas sum(rate(...[10m]))
+      # y compararlo con 0.
+      #
+      # El nombre de la metrica esta en docs/metricas.md.
+      # Cuando termines:  curl -X POST http://localhost:9090/-/reload
+      # ------------------------------------------------------

@@ -1,0 +1,103 @@
+# ============================================================
+# Grafana - Provisioning de alertas nativas
+# ============================================================
+# Anadido en la Sesion 5. Grafana 10.4 (unified alerting).
+#
+# Grafana lee esta carpeta al arrancar, a traves del volumen que ya
+# existia desde la Sesion 1:
+#   ./grafana/provisioning:/etc/grafana/provisioning:ro
+#
+# Por que una regla duplicada, si Prometheus ya la tiene:
+# para poder comparar los dos enfoques con el mismo caso. Prometheus
+# evalua cerca del dato y enruta con Alertmanager; Grafana evalua
+# sobre cualquier datasource (incluidos logs) y notifica desde la
+# misma herramienta donde esta el panel. No compiten: se usan juntos.
+# ============================================================
+
+apiVersion: 1
+
+# ------------------------------------------------------------
+# 1) Punto de contacto: a donde notifica Grafana.
+# ------------------------------------------------------------
+contactPoints:
+  - orgId: 1
+    name: equipo-datos
+    receivers:
+      - uid: cp-email-datos
+        type: email
+        settings:
+          addresses: equipo-datos@orderflow.local
+        disableResolveMessage: false
+
+# ------------------------------------------------------------
+# 2) Politica de notificacion: como agrupa y cada cuanto reenvia.
+# ------------------------------------------------------------
+policies:
+  - orgId: 1
+    receiver: equipo-datos
+    group_by: ['alertname', 'service']
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 3h
+
+# ------------------------------------------------------------
+# 3) La regla: la misma tasa de error que vigila Prometheus.
+# ------------------------------------------------------------
+groups:
+  - orgId: 1
+    name: orderflow_grafana
+    # Esta carpeta la creo el provider de dashboards en la Sesion 4.
+    folder: OrderFlow
+    interval: 1m
+    rules:
+      - uid: of-tasa-error
+        title: TasaErrorAlta (Grafana)
+        # La condicion es el refId de la ultima consulta de la cadena.
+        condition: C
+        for: 2m
+        noDataState: NoData
+        execErrState: Alerting
+        labels:
+          severity: critical
+          service: order-processor
+        annotations:
+          summary: "Tasa de error > 10% (regla nativa de Grafana)"
+        data:
+          # A - la consulta PromQL, identica a la de prometheus/alerts.yml
+          #     salvo por el umbral, que aqui se evalua aparte (paso C).
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            # Este uid se fijo a mano en datasources.yml en la Sesion 4.
+            # Si fuera aleatorio, esta regla no arrancaria.
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: >-
+                100 * sum(rate(orderflow_orders_failed_total[5m]))
+                / clamp_min(sum(rate(orderflow_orders_processed_total[5m]))
+                + sum(rate(orderflow_orders_failed_total[5m])), 0.001)
+              instant: true
+
+          # B - reduce la serie temporal a un unico numero (el ultimo).
+          #     Grafana necesita un escalar para comparar con un umbral.
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+
+          # C - el umbral. Aqui vive el "> 10".
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [10]

@@ -303,3 +303,40 @@ services:
       - "${PUSHGATEWAY_PORT:-9091}:9091"
     networks:
       - orderflow-net
+
+  # ============================================================
+  # DESTINOS DE NOTIFICACION (anadidos en la Sesion 5)
+  # ============================================================
+  # Alertmanager ya estaba desde la Sesion 1, pero sin nadie a quien
+  # avisar. Estos dos servicios son ese "alguien": permiten ver una
+  # notificacion real sin cuenta de correo, sin SMTP externo y sin
+  # salir a internet.
+  # ============================================================
+
+  # Buzon SMTP de mentira. Acepta cualquier correo que le manden y lo
+  # muestra en una interfaz web en el puerto 8025, sin entregarlo a
+  # nadie. Es el estandar para probar envios de correo en desarrollo.
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: orderflow-mailhog
+    restart: unless-stopped
+    ports:
+      - "${MAILHOG_UI_PORT:-8025}:8025"
+      - "${MAILHOG_SMTP_PORT:-1025}:1025"
+    networks:
+      - orderflow-net
+
+  # Microservicio Flask de 50 lineas que recibe el POST de Alertmanager
+  # y lo imprime formateado. Sirve para que el alumno VEA el JSON real
+  # de una alerta, que es lo que recibiria Slack, PagerDuty o un
+  # sistema de tickets.
+  webhook-receiver:
+    build:
+      context: ./services/webhook-receiver
+      dockerfile: Dockerfile
+    container_name: orderflow-webhook-receiver
+    restart: unless-stopped
+    ports:
+      - "${WEBHOOK_PORT:-5001}:5001"
+    networks:
+      - orderflow-net
