@@ -172,6 +172,10 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      # Sesion 4: los dashboards viven versionados en el repo. El provider
+      # "orderflow" de grafana/provisioning/dashboards/dashboards.yml lee
+      # de esta ruta de dentro del contenedor.
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards/json:ro
     networks:
       - orderflow-net
     depends_on:
