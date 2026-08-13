@@ -1,0 +1,15 @@
+# Dependencias de los notebooks de la Sesion 6
+#
+#   pip install -r notebooks/requirements.txt
+#
+# Se instalan en TU maquina, no en un contenedor: los notebooks
+# consultan el stack desde fuera, por localhost, igual que lo haria
+# un script de tu trabajo.
+
+jupyterlab==4.2.*
+requests==2.32.*
+matplotlib==3.9.*
+pandas==2.2.*
+# El cliente debe ser de la misma serie mayor que el servidor.
+# El compose levanta Elasticsearch 8.x, asi que aqui va 8.x.
+elasticsearch==8.13.*
