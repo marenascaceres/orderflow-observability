@@ -312,15 +312,46 @@ pulsa el botón **Refresh**.
 
 ### Paso 12 — Encontrar un error concreto
 
-En la barra de búsqueda de Discover, escribe:
+Ahora vas a filtrar. La barra donde se escribe es **la caja de texto más ancha de
+la fila superior**, la que tiene el texto gris *"Filter your data using KQL
+syntax"*. La reconoces porque está justo entre dos cosas:
+
+- **a su izquierda**, el desplegable con el nombre de tu Data View (`orderflow-logs`);
+- **a su derecha**, el selector de fechas con el icono de calendario y el botón
+  **Refresh**.
+
+```
+[ orderflow-logs ▾ ]  [ Filter your data using KQL syntax ]  [ 📅 Last 15 minutes ]
+    Data View                    AQUI ESCRIBES                    Rango de tiempo
+```
+
+> **«KQL» no es otro sitio: es el idioma de esa caja.** Son las siglas de
+> *Kibana Query Language*, el lenguaje en que se escriben las búsquedas. Cuando
+> en éste o en cualquier manual leas «escribe esta consulta KQL», significa
+> siempre lo mismo: **escríbela en esa caja**. No hay una segunda barra en otro
+> lado.
+
+Haz clic dentro y escribe:
 
 ```
 event: "order_failed"
 ```
 
-**Qué debes ver:** solo las órdenes que fallaron. En el panel izquierdo, haz
-click en el campo `reason` y luego en **Visualize**: verás el desglose de por qué
-están fallando.
+Según escribes, Kibana te va sugiriendo: primero los nombres de campo, y después
+de los dos puntos, los valores que existen de verdad. **Acepta sus sugerencias**:
+es la forma más rápida de no filtrar por un campo que no existe.
+
+Pulsa **Enter**.
+
+**Qué debes ver:** solo las órdenes que fallaron — alrededor del 5 % de las que
+había antes, porque ése es el valor de `ERROR_RATE_PCT` en tu `.env`.
+
+Y ahora el desglose: en el **panel izquierdo**, donde está la lista de campos,
+busca `reason` y haz clic en él. Se despliega un resumen con los motivos de fallo
+más frecuentes y su porcentaje.
+
+> Los valores posibles de `reason` están en `docs/metricas.md`. **`db_error` no
+> existe**: si filtras por él no obtendrás nada, y no será porque no haya errores.
 
 ### Paso 13 — Unir los dos mundos
 
@@ -355,12 +386,61 @@ en Prometheus.
 
 *Pista: `http://localhost:8000/metrics` y busca `# HELP`.*
 
+> **Cuidado con las métricas que terminan en `_created`.** La librería
+> `prometheus_client` añade una por cada contador, con **la misma descripción**
+> que el original, así que la línea `# HELP` no sirve para distinguirlas. Lo que
+> las distingue es el `# TYPE`:
+>
+> ```
+> # TYPE orderflow_orders_generated_total    counter   <- el contador
+> # TYPE orderflow_orders_generated_created  gauge     <- una marca de tiempo
+> ```
+>
+> El valor de una `_created` es el instante en que nació la métrica, en segundos
+> desde 1970 (`1.786938e+09`). No cuenta nada y nunca cambia. **Si el número que
+> ves parece una cifra enorme en notación científica, te has equivocado de
+> métrica.**
+
 ### Ejercicio C — La pregunta incómoda
 
 Compara los valores de `orderflow_orders_generated_total` y
 `orderflow_orders_processed_total`. ¿Son iguales? ¿Deberían serlo?
 
+Para no sumar cinco regiones a mano, envuelve cada una en `sum()`:
+
+```promql
+sum(orderflow_orders_generated_total)
+```
+
+```promql
+sum(orderflow_orders_processed_total)
+```
+
+Y mira también las que fallaron:
+
+```promql
+sum(orderflow_orders_failed_total)
+```
+
 Escribe en dos líneas por qué difieren.
+
+> **Si al sumar procesadas + fallidas te sale MÁS que las generadas**, tu stack
+> no está roto. Pasan dos cosas a la vez:
+>
+> 1. **Tus tres consultas no fueron simultáneas.** Entre que escribiste la
+>    primera y la tercera, el generator siguió produciendo. Compruébalo pidiendo
+>    las tres de golpe:
+>
+>    ```promql
+>    sum(orderflow_orders_generated_total) - sum(orderflow_orders_processed_total) - sum(orderflow_orders_failed_total)
+>    ```
+>
+> 2. **Prometheus tampoco scrapea los dos servicios en el mismo instante.** Cada
+>    uno se lee cada 15 segundos, pero desfasados entre sí. Siempre estás
+>    restando un dato de hace unos segundos menos otro de hace otros tantos.
+>
+> Por eso, en la Sesión 2 aprenderás que dos contadores de servicios distintos
+> se comparan con `rate()` sobre la misma ventana, nunca restando acumulados.
 
 ---
 

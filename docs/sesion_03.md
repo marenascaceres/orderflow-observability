@@ -362,7 +362,8 @@ vacío, pon el rango de tiempo en **Last 15 minutes** y pulsa **Refresh**.
 
 ### Paso 14 — Comprobar que los dos orígenes conviven
 
-En la barra de búsqueda (esto es **KQL**, el lenguaje de consulta de Kibana):
+En la misma barra de búsqueda de la Sesión 1 —la caja ancha de arriba, entre el
+Data View y el selector de fechas— escribe esta consulta **KQL**:
 
 ```
 tags: "generator"

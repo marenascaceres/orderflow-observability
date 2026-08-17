@@ -83,6 +83,13 @@ Esta es la lista **completa** de valores que `orderflow_orders_failed_total`
 puede tomar. No hay ningún otro. Si filtras por un valor que no está aquí, la
 consulta devuelve vacío y parecerá que no hay errores.
 
+> **Ojo: no vas a ver los diez.** En un stack sano solo aparecen los **cuatro
+> fallos simulados** de la segunda tabla, repartidos más o menos por igual. Los
+> de validación exigen órdenes mal formadas, y el generator siempre las produce
+> correctas; los del pipeline exigen una avería real.
+>
+> Que solo veas cuatro es señal de que todo funciona, no de que te falte algo.
+
 ### Errores de validación (el pedido llegó mal formado)
 
 | Valor | Se emite cuando |
