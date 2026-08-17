@@ -137,8 +137,17 @@ docker compose logs -f order-generator
 **Qué debes ver:** líneas de texto plano como
 
 ```
-2026-08-12 03:12:15 INFO - Order generated: id=8c4a2f9b, region=lima, items=3, total=S/127.50
+orderflow-generator  | 2026-08-12 03:12:15,481 INFO - Order generated: id=8c4a2f9b, region=lima, items=3, total=S/127.50
 ```
+
+Lo de la izquierda, `orderflow-generator |`, lo añade Docker para que sepas de qué
+contenedor viene cada línea. No forma parte del log.
+
+> **Fíjate en la marca de tiempo: `03:12:15,481`.** Los milisegundos van separados
+> por **coma**, no por punto, y la fecha se separa de la hora con un **espacio**,
+> no con una `T`. Eso significa que **no es ISO8601**. Hoy da igual; en la Sesión 3
+> ese detalle va a ser la diferencia entre un pipeline que funciona y uno que
+> parece funcionar.
 
 `Ctrl+C` para salir del stream. **Esto no detiene el servicio**, solo deja de
 mostrarte sus logs.
@@ -223,10 +232,30 @@ Ve a la pestaña **Graph** y escribe:
 orderflow_orders_processed_total
 ```
 
-Pulsa **Execute** y luego la pestaña **Graph**.
+Pulsa **Execute**. Debajo del campo verás dos pestañas: **Table** y **Graph**.
+Sirven para cosas distintas y conviene usar las dos.
 
-**Qué debes ver:** una línea que solo sube. Nunca baja. Eso es un **Counter**:
+**Mira primero `Table`.** Te lista una fila por cada serie:
+
+```
+orderflow_orders_processed_total{region="lima"}       1247
+orderflow_orders_processed_total{region="arequipa"}    983
+orderflow_orders_processed_total{region="trujillo"}    891
+orderflow_orders_processed_total{region="piura"}       634
+```
+
+Ahí se ve el concepto de golpe: **una métrica, pero una serie temporal
+independiente por cada valor de la etiqueta `region`**. Es la vista que usarás
+siempre que quieras saber *cuántas* series hay o *cómo se llaman*.
+
+**Ahora pasa a `Graph`.**
+
+**Qué debes ver:** unas líneas que solo suben. Nunca bajan. Eso es un **Counter**:
 un contador acumulativo que solo se reinicia si el servicio se reinicia.
+
+> Las líneas de las distintas regiones se parecen mucho y cuesta distinguirlas.
+> Es normal: todas crecen a ritmo parecido. Para identificarlas, pasa el ratón
+> por encima de la gráfica, o vuelve a `Table`.
 
 Ahora prueba:
 
@@ -248,7 +277,26 @@ instantánea.
 
 ### Paso 11 — Crear el Data View de Kibana
 
-Abre `http://localhost:5601` y ve al menú lateral → **Discover**.
+**Entra directamente por esta dirección**, no por `http://localhost:5601` a secas:
+
+```
+http://localhost:5601/app/discover
+```
+
+> **Por qué así.** Si abres `localhost:5601` sin más, Kibana muestra una pantalla
+> de bienvenida —*"Start by adding integrations"*— que ocupa **toda** la ventana:
+> oculta el menú lateral y la barra superior. Desde ahí no puedes navegar a
+> ninguna parte, y el único botón visible, **Add integrations**, lleva a Fleet,
+> que no tiene nada que ver con este curso.
+>
+> Tus logs ya están dentro de Elasticsearch. No hay nada que integrar.
+>
+> Si ya te has quedado atrapado en esa pantalla, tienes dos salidas: escribir la
+> dirección de arriba, o buscar el enlace pequeño de texto **"Explore on my own"**
+> —mucho menos visible que el botón— que devuelve a la interfaz normal.
+
+Una vez dentro de Discover ya verás el menú de tres rayas (**☰**) arriba a la
+izquierda. De ahí en adelante puedes navegar por el menú: **Analytics → Discover**.
 
 Kibana te dirá que no hay ningún Data View. Créalo:
 
@@ -295,6 +343,9 @@ Una métrica te dice que algo va mal. Un log te dice qué. **Necesitas los dos**
 
 En Prometheus, ejecuta `orderflow_orders_processed_total` y anota cuántas
 regiones distintas aparecen y cómo se llaman.
+
+*Pista: hazlo desde la pestaña **Table**, no desde **Graph**. Una fila por
+región.*
 
 ### Ejercicio B — Encuentra la métrica del generator
 

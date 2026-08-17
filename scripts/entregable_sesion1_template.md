@@ -21,7 +21,7 @@ _(Pega aquí el screenshot mostrando los 10 servicios en estado `Up` o `healthy`
 | 2 | Alertmanager    | http://localhost:9093                              | ☐          | _(completar)_                                    |
 | 3 | Grafana         | http://localhost:3000                              | ☐          | _(completar)_                                    |
 | 4 | Elasticsearch   | http://localhost:9200                              | ☐          | _(completar)_                                    |
-| 5 | Kibana          | http://localhost:5601                              | ☐          | _(completar)_                                    |
+| 5 | Kibana          | http://localhost:5601/app/discover                 | ☐          | _(completar)_                                    |
 | 6 | order-generator | http://localhost:8000/metrics                      | ☐          | _(completar)_                                    |
 | 7 | order-processor | http://localhost:8001/metrics                      | ☐          | _(completar)_                                    |
 | 8 | Postgres        | `docker compose exec postgres pg_isready -U orderflow` | ☐      | _(completar)_                                    |

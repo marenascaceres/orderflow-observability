@@ -85,7 +85,7 @@ curl -s "localhost:9200/orderflow-logs-*/_search?q=level:ERROR&pretty"
 curl -s "localhost:9200/orderflow-logs-*/_search?q=event:order_failed&pretty"
 ```
 
-En Kibana (`localhost:5601`), la vía equivalente es **Discover**, sobre el index pattern `orderflow-logs-*` con time field `@timestamp`.
+En Kibana, la vía equivalente es **Discover** (`http://localhost:5601/app/discover`), sobre el index pattern `orderflow-logs-*` con time field `@timestamp`.
 
 ## 4. Extender un pipeline sin romperlo
 

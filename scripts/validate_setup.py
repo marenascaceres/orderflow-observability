@@ -18,11 +18,42 @@ import urllib.error
 import urllib.request
 from typing import Callable
 
-RESET = "\033[0m"
-GREEN = "\033[92m"
-RED = "\033[91m"
-YELLOW = "\033[93m"
-BOLD = "\033[1m"
+# ------------------------------------------------------------
+# Color en consola.
+# ------------------------------------------------------------
+# Windows PowerShell 5.1 no interpreta secuencias ANSI a menos que se
+# active el modo terminal virtual. Sin esto el alumno ve basura del
+# tipo "<-[92m" en lugar de texto verde. Si no se puede activar (o la
+# salida se esta redirigiendo a un archivo), se apaga el color y la
+# tabla sigue siendo perfectamente legible.
+# ------------------------------------------------------------
+def _activar_color() -> bool:
+    if not sys.stdout.isatty():
+        return False
+    if sys.platform != "win32":
+        return True
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+        modo = ctypes.c_ulong()
+        if not kernel32.GetConsoleMode(handle, ctypes.byref(modo)):
+            return False
+        # 0x0004 = ENABLE_VIRTUAL_TERMINAL_PROCESSING
+        return bool(kernel32.SetConsoleMode(handle, modo.value | 0x0004))
+    except Exception:
+        return False
+
+
+if _activar_color():
+    RESET = "\033[0m"
+    GREEN = "\033[92m"
+    RED = "\033[91m"
+    YELLOW = "\033[93m"
+    BOLD = "\033[1m"
+else:
+    RESET = GREEN = RED = YELLOW = BOLD = ""
 
 
 def check_http(url: str, timeout: float = 5.0, expect_status: int = 200, contains: str | None = None) -> tuple[bool, str]:

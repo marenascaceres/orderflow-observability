@@ -343,9 +343,13 @@ tipo de comprobación que hay que hacer en un pipeline real y que casi nadie hac
 
 ### Paso 13 — Crear el Data View
 
-Abre `http://localhost:5601` → menú lateral → **Discover**.
+Abre `http://localhost:5601/app/discover`.
 
-Si ya lo creaste en la Sesión 1, sáltate esto. Si no:
+> Entra por esa dirección completa, no por `localhost:5601` a secas: esa última
+> te lleva a la pantalla de bienvenida de Kibana, que oculta el menú lateral.
+> Es lo mismo que viste en la Sesión 1.
+
+Si ya creaste el Data View en la Sesión 1, sáltate esto. Si no:
 
 1. **Create data view**
 2. **Name:** `orderflow-logs`

@@ -81,7 +81,7 @@ Después de ~1 minuto, los 10 servicios deben estar `Up` o `healthy`.
 | Prometheus      | http://localhost:9090            | -              |
 | Alertmanager    | http://localhost:9093            | -              |
 | Grafana         | http://localhost:3000            | admin / admin  |
-| Kibana          | http://localhost:5601            | -              |
+| Kibana          | http://localhost:5601/app/discover | -            |
 | Elasticsearch   | http://localhost:9200            | -              |
 | order-generator | http://localhost:8000/metrics    | -              |
 | order-processor | http://localhost:8001/metrics    | -              |

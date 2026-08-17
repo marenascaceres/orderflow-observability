@@ -424,7 +424,7 @@ cualquier máquina que levante el stack.
 En la Sesión 3 dejaste el Data View `orderflow-logs-*` creado y aprendiste a
 buscar en Discover. Hoy conviertes esas búsquedas en gráficos.
 
-**Paso 20.** Abre `http://localhost:5601` → **Discover**. Comprueba que el Data
+**Paso 20.** Abre `http://localhost:5601/app/discover`. Comprueba que el Data
 View es `orderflow-logs-*` y el rango de tiempo, los últimos 15 minutos.
 
 Aplica el filtro:
