@@ -82,17 +82,6 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    # --- SESION 3: enrutar los logs de texto plano hacia Logstash ---
-    # El driver de logging de Docker corre a nivel del daemon (dockerd),
-    # NO dentro de la red del contenedor. Por eso NO resuelve nombres de
-    # servicio de Compose como "logstash". Como dockerd y el puerto
-    # publicado de Logstash conviven en la misma maquina (o en la VM de
-    # Docker Desktop), "localhost" si funciona.
-    logging:
-      driver: syslog
-      options:
-        syslog-address: "udp://localhost:${LOGSTASH_SYSLOG_PORT:-5000}"
-        tag: "order-generator"
 
   order-processor:
     build:
@@ -172,10 +161,6 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      # Sesion 4: los dashboards viven versionados en el repo. El provider
-      # "orderflow" de grafana/provisioning/dashboards/dashboards.yml lee
-      # de esta ruta de dentro del contenedor.
-      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards/json:ro
     networks:
       - orderflow-net
     depends_on:
@@ -221,9 +206,6 @@ services:
       - LS_JAVA_OPTS=${LS_JAVA_OPTS:--Xms256m -Xmx256m}
     ports:
       - "${LOGSTASH_TCP_PORT:-5044}:5044"
-      # SESION 3: input syslog para los logs de texto plano del generator.
-      # Es UDP, no TCP: el driver syslog de Docker envia por datagramas.
-      - "${LOGSTASH_SYSLOG_PORT:-5000}:5000/udp"
     volumes:
       - ./logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
       - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
@@ -248,95 +230,3 @@ services:
     depends_on:
       elasticsearch:
         condition: service_healthy
-
-  # ============================================================
-  # SESION 2 - Exporters y Pushgateway
-  # ============================================================
-  # Un exporter es un traductor: habla el protocolo nativo de un
-  # servicio (Postgres, Redis) y publica sus metricas internas en
-  # el formato que Prometheus sabe leer. Sirven para monitorear
-  # software que no podemos instrumentar porque no es nuestro.
-  # ============================================================
-
-  # Traduce las metricas internas de Postgres (conexiones, tamano
-  # de base, transacciones, locks). Reutiliza las credenciales que
-  # ya estan en .env: no hay que crear un usuario nuevo.
-  postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:v0.15.0
-    container_name: orderflow-postgres-exporter
-    restart: unless-stopped
-    environment:
-      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-orderflow}:${POSTGRES_PASSWORD:-orderflow_dev_2026}@postgres:5432/${POSTGRES_DB:-orderflow_dw}?sslmode=disable"
-    ports:
-      - "${POSTGRES_EXPORTER_PORT:-9187}:9187"
-    networks:
-      - orderflow-net
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  # Mismo patron, para Redis: memoria usada, clientes conectados,
-  # comandos por segundo, longitud de las listas.
-  redis-exporter:
-    image: oliver006/redis_exporter:v1.62.0
-    container_name: orderflow-redis-exporter
-    restart: unless-stopped
-    environment:
-      REDIS_ADDR: "redis://redis:6379"
-    ports:
-      - "${REDIS_EXPORTER_PORT:-9121}:9121"
-    networks:
-      - orderflow-net
-    depends_on:
-      redis:
-        condition: service_healthy
-
-  # Buzon intermedio para trabajos de corta duracion (batch, cron,
-  # ETL). Prometheus no alcanza a scrapear un script que vive 3
-  # segundos, asi que el script empuja su metrica aqui y Prometheus
-  # lee este servicio, que si esta siempre en pie.
-  pushgateway:
-    image: prom/pushgateway:v1.9.0
-    container_name: orderflow-pushgateway
-    restart: unless-stopped
-    ports:
-      - "${PUSHGATEWAY_PORT:-9091}:9091"
-    networks:
-      - orderflow-net
-
-  # ============================================================
-  # DESTINOS DE NOTIFICACION (anadidos en la Sesion 5)
-  # ============================================================
-  # Alertmanager ya estaba desde la Sesion 1, pero sin nadie a quien
-  # avisar. Estos dos servicios son ese "alguien": permiten ver una
-  # notificacion real sin cuenta de correo, sin SMTP externo y sin
-  # salir a internet.
-  # ============================================================
-
-  # Buzon SMTP de mentira. Acepta cualquier correo que le manden y lo
-  # muestra en una interfaz web en el puerto 8025, sin entregarlo a
-  # nadie. Es el estandar para probar envios de correo en desarrollo.
-  mailhog:
-    image: mailhog/mailhog:v1.0.1
-    container_name: orderflow-mailhog
-    restart: unless-stopped
-    ports:
-      - "${MAILHOG_UI_PORT:-8025}:8025"
-      - "${MAILHOG_SMTP_PORT:-1025}:1025"
-    networks:
-      - orderflow-net
-
-  # Microservicio Flask de 50 lineas que recibe el POST de Alertmanager
-  # y lo imprime formateado. Sirve para que el alumno VEA el JSON real
-  # de una alerta, que es lo que recibiria Slack, PagerDuty o un
-  # sistema de tickets.
-  webhook-receiver:
-    build:
-      context: ./services/webhook-receiver
-      dockerfile: Dockerfile
-    container_name: orderflow-webhook-receiver
-    restart: unless-stopped
-    ports:
-      - "${WEBHOOK_PORT:-5001}:5001"
-    networks:
-      - orderflow-net

@@ -2,23 +2,31 @@
 
 Repositorio de práctica del curso **"Monitoreo y Registro con Python"** de BSG Institute.
 
-Este proyecto simula el pipeline de datos de una empresa ficticia de e-commerce (**OrderFlow**) y expone toda la infraestructura de observabilidad necesaria para monitorearlo: métricas con Prometheus, logs con ELK, dashboards con Grafana y Kibana, y alertas con Alertmanager.
+Este proyecto simula el pipeline de datos de una empresa ficticia de e-commerce (**OrderFlow**) y trae el punto de partida sobre el que construirás, durante seis sesiones, un stack de observabilidad completo: métricas con Prometheus, logs con ELK, dashboards con Grafana y Kibana, y alertas con Alertmanager.
 
-Todo corre en contenedores Docker en tu equipo local. **El stack crece durante el
-curso**: arranca con 10 servicios en la Sesión 1 y termina con 15 en la Sesión 6.
+Todo corre en contenedores Docker en tu equipo local.
 
-Cada sesión añade capacidades sobre lo que ya funciona. Nunca se reemplaza
-configuración ni se vuelve atrás: si algo funcionaba en la Sesión 2, sigue
-funcionando en la 6.
+---
 
-| Al terminar la sesión | Servicios | Qué se añadió |
+## Cómo funciona este repositorio
+
+**Lo clonas una sola vez.** No hay que volver a descargar nada durante el curso.
+
+Lo que hay aquí es el **punto de partida**: 10 servicios funcionando. A partir de la Sesión 2, cada sesión lo hace crecer, y **ese crecimiento lo escribes tú** en tu copia local, siguiendo el manual de la sesión.
+
+| Al terminar la sesión | Servicios | Qué añades tú |
 |:---:|:---:|---|
-| 1 | 10 | El pipeline y las herramientas, tres de ellas vacías a propósito |
-| 2 | 13 | `postgres-exporter`, `redis-exporter`, `pushgateway` |
-| 3 | 13 | Los dos orígenes de logs llegando a Elasticsearch |
-| 4 | 13 | Dashboards provisionados desde archivo |
-| 5 | 15 | `mailhog`, `webhook-receiver` y las alertas |
+| 1 | 10 | Nada. Verificas y exploras |
+| 2 | 13 | `postgres-exporter`, `redis-exporter`, `pushgateway` y tu primera métrica en Python |
+| 3 | 13 | El segundo origen de logs y el pipeline que los estructura |
+| 4 | 13 | El provisioning de Grafana y tu dashboard |
+| 5 | 15 | `mailhog`, `webhook-receiver`, las reglas y el enrutamiento de alertas |
 | 6 | 15 | Los notebooks que consultan todo desde Python |
+
+> **Tu repositorio y el del docente van a divergir, y eso es lo correcto.** El
+> tuyo crece con tu trabajo. Nunca hace falta un `git pull`.
+
+Los archivos que no se teclean en clase —código Python largo, notebooks, pipelines de 120 líneas— **te los entrega el docente por la plataforma del curso**, unos días antes de cada sesión. El manual te dice dónde colocarlos.
 
 ---
 
@@ -29,8 +37,7 @@ funcionando en la 6.
 - **Disco libre**: 10 GB (para imágenes + datos)
 - **Python 3.11+** (para los validadores y, en la Sesión 6, los notebooks)
 
-**Puertos libres.** Los siete primeros hacen falta desde la Sesión 1; el resto se
-van usando conforme el stack crece:
+**Puertos libres.** Los diez primeros hacen falta desde la Sesión 1; el resto se van usando conforme el stack crece:
 
 | Sesión | Puertos |
 |:---:|---|
@@ -46,7 +53,7 @@ van usando conforme el stack crece:
 ## Arranque rápido
 
 ```bash
-# 1. Clonar el repositorio
+# 1. Clonar el repositorio (una sola vez en todo el curso)
 git clone https://github.com/marenascaceres/orderflow-observability.git
 cd orderflow-observability
 
@@ -59,11 +66,11 @@ docker compose up -d
 # 4. Verificar estado
 docker compose ps
 
-# 5. (Opcional) Ejecutar el validador automático
-python3 scripts/validate_setup.py
+# 5. Ejecutar el validador automático
+python scripts/validate_setup.py
 ```
 
-Después de ~1 minuto, todos los servicios deben estar `Up` o `healthy`.
+Después de ~1 minuto, los 10 servicios deben estar `Up` o `healthy`.
 
 ---
 
@@ -79,7 +86,7 @@ Después de ~1 minuto, todos los servicios deben estar `Up` o `healthy`.
 | order-generator | http://localhost:8000/metrics    | -              |
 | order-processor | http://localhost:8001/metrics    | -              |
 
-Y los que aparecen más adelante:
+Y los que construirás más adelante:
 
 | Servicio | URL | Desde |
 |---|---|:---:|
@@ -88,6 +95,20 @@ Y los que aparecen más adelante:
 | Pushgateway | http://localhost:9091 | Sesión 2 |
 | MailHog (buzón de prueba) | http://localhost:8025 | Sesión 5 |
 | webhook-receiver | http://localhost:5001/health | Sesión 5 |
+
+---
+
+## Las tres cajas vacías
+
+Al levantar el stack por primera vez arrancan 10 servicios, pero **tres están deliberadamente vacíos**:
+
+| Servicio | Hoy | Se llena en |
+|---|---|:---:|
+| **Kibana** | Sin ningún Data View | Sesión 3 |
+| **Grafana** | Con los datos conectados, sin un solo panel | Sesión 4 |
+| **Alertmanager** | Corriendo, sin ninguna regla que le llegue | Sesión 5 |
+
+No están rotos. Están esperándote.
 
 ---
 
@@ -127,33 +148,28 @@ Alertmanager  Grafana   Elasticsearch
 
 ```
 orderflow-observability/
-├── docker-compose.yml       # Definición de los servicios
+├── docker-compose.yml       # Los 10 servicios del punto de partida
 ├── .env.example             # Plantilla de variables de entorno
 ├── README.md                # Este archivo
 │
 ├── services/
 │   ├── order-generator/     # Genera órdenes sintéticas
-│   ├── order-processor/     # Consume, valida, persiste e instrumenta
-│   └── webhook-receiver/    # Recibe alertas de Alertmanager (Sesión 5)
+│   └── order-processor/     # Consume, valida, persiste e instrumenta
+│                            # Trae el TODO del ejercicio de la Sesión 2
 │
 ├── prometheus/              # Scraping (prometheus.yml) y reglas (alerts.yml)
-├── alertmanager/            # Enrutamiento e inhibición de alertas
+├── alertmanager/            # Configuración base, se completa en la Sesión 5
 ├── logstash/                # Pipeline de ingesta de logs
-├── grafana/
-│   ├── provisioning/        # Datasources, dashboards y alertas por archivo
-│   └── dashboards/          # Tus dashboards en JSON (Sesión 4)
+├── grafana/provisioning/    # Datasources y dashboards por archivo
 ├── postgres/                # Init SQL del data warehouse
-│
-├── notebooks/               # Los cuatro notebooks de la Sesión 6
 │
 ├── docs/
 │   ├── metricas.md          # GLOSARIO CANÓNICO. La fuente de verdad
-│   ├── sesion_01.md … 06.md # Manuales de práctica
-│   ├── soluciones/          # Se publican después de cada sesión
+│   ├── sesion_01.md … 06.md # Los seis manuales de práctica
 │   ├── mini_proyecto.md     # El encargo final
 │   ├── prometheus_intro.md  # Lectura previa a la Sesión 2
-│   ├── logstash_intro.md    # Lectura previa a la Sesión 3
-│   ├── grafana_kibana_intro.md
+│   ├── logstash_intro.md    # Lectura previa a la Sesión 4
+│   ├── alertas_intro.md     # Lectura previa a la Sesión 5
 │   └── troubleshooting.md   # Errores comunes y soluciones
 │
 └── scripts/
@@ -169,26 +185,6 @@ orderflow-observability/
 
 ---
 
-## Progresión del curso por sesiones
-
-| Sesión | Tema | Qué cambia en el repo |
-|:------:|---|---|
-| **1** | Fundamentos y levantamiento del stack | Se verifica lo que ya está; Kibana, Grafana y Alertmanager quedan vacíos a propósito |
-| **2** | Métricas con Prometheus y exporters | +3 servicios, +3 scrape jobs, y tú instrumentas un `Counter` en `processor.py` |
-| **3** | Logs con Logstash y Elasticsearch | Segundo origen de logs por syslog; grok estructura el texto plano |
-| **4** | Visualización en Grafana y Kibana | Provisioning de dashboards; tu dashboard pasa a ser un archivo del repo |
-| **5** | Alertas y notificaciones | +2 servicios; reglas, enrutamiento, inhibición y notificación real |
-| **6** | Optimización e integración con Python | Los notebooks consultan Prometheus y Elasticsearch desde código |
-
-Cada sesión tiene su tag en git. Para ver el repositorio tal como quedó al
-terminar una sesión concreta:
-
-```bash
-git checkout sesion-3    # y para volver al final: git checkout main
-```
-
----
-
 ## Comandos útiles
 
 ```bash
@@ -196,10 +192,11 @@ docker compose up -d              # Levantar todo
 docker compose down               # Detener y eliminar contenedores
 docker compose down -v            # Detener y BORRAR VOLÚMENES (reset total)
 docker compose ps                 # Estado de servicios
+docker compose config --services  # Comprobar el YAML sin levantar nada
 docker compose logs <servicio>    # Logs de un servicio
 docker compose logs -f <servicio> # Logs en tiempo real (Ctrl+C para salir)
 docker compose restart <servicio> # Reiniciar un servicio
-docker compose build              # Reconstruir imágenes locales (generator/processor)
+docker compose up -d --build      # Reconstruir imágenes locales
 ```
 
 ---

@@ -41,9 +41,6 @@ scrape_configs:
           component: pipeline
 
   # Order Processor (Python) - el servicio instrumentado
-  # Expone orderflow_orders_processed_total, orderflow_orders_failed_total,
-  # orderflow_processing_duration_seconds, orderflow_queue_depth.
-  # La lista completa esta en docs/metricas.md
   - job_name: order-processor
     static_configs:
       - targets:
@@ -51,44 +48,3 @@ scrape_configs:
         labels:
           service: processor
           component: pipeline
-
-  # ============================================================
-  # SESION 2 - Exporters y Pushgateway
-  # ============================================================
-  # Las etiquetas service/component se anaden aqui, no en el codigo.
-  # Gracias a ellas se puede consultar por capa sin conocer los
-  # nombres de las metricas:  sum by (component) (...)
-  # ============================================================
-
-  # Metricas internas de Postgres, traducidas por el exporter.
-  # Prometheus habla con el exporter; el exporter habla con Postgres.
-  - job_name: postgres-exporter
-    static_configs:
-      - targets:
-          - postgres-exporter:9187
-        labels:
-          service: postgres
-          component: infrastructure
-
-  # Metricas internas de Redis.
-  - job_name: redis-exporter
-    static_configs:
-      - targets:
-          - redis-exporter:9121
-        labels:
-          service: redis
-          component: infrastructure
-
-  # Pushgateway: buzon para jobs de corta duracion.
-  #
-  # honor_labels: true es imprescindible. La metrica llega al
-  # Pushgateway con su propio label job (el del script que la envio).
-  # Sin esta linea Prometheus lo sobrescribiria con job="pushgateway"
-  # y se perderia la trazabilidad de que script la produjo.
-  - job_name: pushgateway
-    honor_labels: true
-    static_configs:
-      - targets:
-          - pushgateway:9091
-        labels:
-          component: batch

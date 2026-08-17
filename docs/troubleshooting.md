@@ -120,6 +120,36 @@ El processor tolera que Logstash no esté disponible (no bloquea el pipeline pri
 
 ---
 
+## Archivos que entrega el docente por la plataforma
+
+Tres sesiones necesitan archivos que no vienen en el repositorio. El docente los
+publica en la plataforma unos días antes. **Cada uno tiene su sitio exacto**: si
+lo dejas en otra carpeta, no falla con un mensaje claro — simplemente no ocurre
+nada.
+
+| Antes de | Archivo | Dónde va |
+|:---:|---|---|
+| Sesión 3 | `orderflow.conf` | `logstash/pipeline/orderflow.conf` (reemplaza el que hay) |
+| Sesión 5 | `app.py`, `Dockerfile`, `requirements.txt` | `services/webhook-receiver/` (carpeta nueva) |
+| Sesión 5 | `orderflow-alerts.yml` | `grafana/provisioning/alerting/` (carpeta nueva) |
+| Sesión 6 | 4 × `.ipynb` + `requirements.txt` | `notebooks/` (carpeta nueva) |
+
+**Comprueba dónde estás antes de copiar.** Todas las rutas de la tabla son
+relativas a la raíz del repositorio, la carpeta donde está `docker-compose.yml`.
+
+```bash
+ls docker-compose.yml
+```
+
+Si eso da error, no estás en la raíz y las rutas no funcionarán.
+
+> **Ojo con los `requirements.txt`.** Hay tres distintos en el curso: uno del
+> generator, uno del processor y el de los notebooks. Copiar uno encima de otro
+> rompe el servicio afectado. El de la Sesión 6 va en `notebooks/`, en ninguna
+> otra parte.
+
+---
+
 ## Servicios que aparecen más adelante
 
 Los de esta sección solo existen si ya hiciste la sesión que los añade. Si aún no

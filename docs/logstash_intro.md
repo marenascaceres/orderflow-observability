@@ -1,6 +1,7 @@
-# Introducción a Logstash — lectura previa a Sesión 4
+# Introducción a Logstash — lectura previa a la Sesión 4
 
-Esta lectura repasa lo que vimos en Sesión 3. Si te la perdiste, este documento alcanza para seguir Sesión 4 sin problema.
+Esta lectura repasa lo que construiste en la Sesión 3 y te prepara para la 4. Si
+faltaste a la Sesión 3, con este documento puedes seguir la 4 sin problema.
 
 ## 1. ¿Qué problema resuelve Logstash?
 
@@ -12,7 +13,7 @@ Prometheus (Sesión 2) responde "¿cuánto? ¿cuándo?" a través de métricas a
 - **Logstash** — recolecta, transforma y envía.
 - **Kibana** — interfaz para explorar y buscar sobre lo que hay en Elasticsearch.
 
-Grafana también puede consultar Elasticsearch (su datasource ya está provisionado en este repo apuntando a `orderflow-logs-*`) — eso lo usamos recién en Sesión 4.
+Grafana también puede consultar Elasticsearch (su datasource ya está provisionado en este repo apuntando a `orderflow-logs-*`) — eso lo usarás en la Sesión 4.
 
 ## 2. Anatomía de un pipeline
 
@@ -88,12 +89,12 @@ En Kibana (`localhost:5601`), la vía equivalente es **Discover**, sobre el inde
 
 ## 4. Extender un pipeline sin romperlo
 
-Cuando agregás una fuente de datos nueva a un pipeline que ya funciona:
+Cuando añades una fuente de datos nueva a un pipeline que ya funciona:
 
-1. Agregá el `input` nuevo sin tocar el existente.
-2. Usá `tags` en cada input para poder distinguir el origen de cada evento dentro del `filter`.
-3. Envolvé la lógica de `filter` específica de cada origen en un condicional (`if "tag" in [tags] { ... }`), en vez de reescribir todo.
-4. Mantené un único `output` si querés que todo caiga al mismo índice — útil para consultar y armar dashboards sobre todas las fuentes juntas.
+1. Añade el `input` nuevo sin tocar el existente.
+2. Usa `tags` en cada input para poder distinguir el origen de cada evento dentro del `filter`.
+3. Envuelve la lógica de `filter` específica de cada origen en un condicional (`if "tag" in [tags] { ... }`), en vez de reescribir todo.
+4. Mantén un único `output` si quieres que todo caiga al mismo índice — útil para consultar y construir dashboards sobre todas las fuentes juntas.
 
 ## 5. Qué viene en Sesión 4
 

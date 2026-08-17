@@ -1,36 +1,10 @@
 # ============================================================
 # Grafana - Provisioning de dashboards
 # ============================================================
-# Anadido en la Sesion 4. Hasta la Sesion 3 este archivo tenia
-# "providers: []" y Grafana arrancaba vacio a proposito.
-#
-# Un "provider" de tipo file le dice a Grafana: mira esta carpeta
-# y carga como dashboard todo JSON que encuentres dentro.
-#
-# Por que asi y no creando el dashboard a mano en la interfaz:
-# un dashboard hecho a clics vive solo en la base de datos interna
-# de Grafana. Si el volumen se borra, desaparece. Provisionado
-# desde archivo, el dashboard es codigo: esta en el repo, se
-# versiona, se revisa en un pull request y se recrea solo.
+# Sesion 4 completa esto con dashboards reales. Por ahora
+# vacio para que Grafana arranque sin errores.
 # ============================================================
 
 apiVersion: 1
 
-providers:
-  - name: orderflow
-    orgId: 1
-    # Carpeta que veras en el menu Dashboards de Grafana.
-    folder: OrderFlow
-    type: file
-    # false = si alguien borra el JSON de la carpeta, Grafana borra
-    # tambien el dashboard. Lo dejamos en false para que el estado de
-    # Grafana siempre refleje el contenido del repo.
-    disableDeletion: false
-    # Cada 30s relee la carpeta. Editas el JSON, guardas, refrescas
-    # el navegador y ves el cambio: no hace falta reiniciar Grafana.
-    updateIntervalSeconds: 30
-    options:
-      # Esta ruta es la de DENTRO del contenedor. docker-compose.yml
-      # monta ./grafana/dashboards del repo justo aqui.
-      path: /etc/grafana/provisioning/dashboards/json
-      foldersFromFilesStructure: false
+providers: []

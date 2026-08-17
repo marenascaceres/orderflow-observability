@@ -28,59 +28,27 @@ campos, y podrás cruzarlos en una sola consulta.
 
 ## Punto de partida
 
-### Paso 0 — Sincronizar tu código
+Necesitas dos cosas:
 
-**Este paso solo te afecta si hiciste el ejercicio de instrumentación de la
-Sesión 2.** Si lo hiciste, tu `processor.py` difiere del repositorio, y `git pull`
-te dará un conflicto.
-
-Primero comprueba si es tu caso:
+1. El stack de la Sesión 2 funcionando: **13 servicios**.
+2. El archivo **`orderflow.conf`** descargado de la plataforma del curso.
 
 ```bash
-git status
-```
-
-Si aparece `modified: services/order-processor/processor.py`, haz esto:
-
-```bash
-git checkout -- services/order-processor/processor.py
-```
-
-Ese comando descarta tu versión local y toma la del repositorio. **No pierdes
-nada:** a partir de esta sesión, la métrica `orderflow_order_amount_soles_total`
-viene ya incluida en el repo, con la misma implementación que escribiste tú (y
-comentada, por si quieres comparar).
-
-> Si quieres conservar tu versión para compararla, cópiala antes:
-> `cp services/order-processor/processor.py mi_processor_sesion2.py`
-
-### Paso 1 — Actualizar y levantar
-
-```bash
-git pull
 docker compose up -d
-```
-
-**Qué debes ver:** Docker **recrea** `order-generator` y `logstash`, y deja
-`Running` los otros 11. El generator se recrea porque cambió su configuración de
-logging; Logstash porque abrió un puerto nuevo.
-
-> No hace falta que toques tu `.env`. La variable nueva `LOGSTASH_SYSLOG_PORT`
-> tiene el valor 5000 por defecto en `docker-compose.yml`.
-
-Confirma que sigues teniendo todo:
-
-```bash
 docker compose ps
 ```
 
-**Qué debes ver:** 13 filas.
+**Qué debes ver:** 13 filas, todas `Up` o `healthy`.
+
+> **Tu métrica de la Sesión 2 sigue ahí.** El `Counter` que escribiste en
+> `processor.py` es tuyo y nadie lo va a tocar. Compruébalo si quieres:
+> `curl -s http://localhost:8001/metrics | grep order_amount`
 
 ---
 
 ## Bloque 1 — Ver el problema antes de resolverlo
 
-### Paso 2 — Dos formas de decir lo mismo
+### Paso 1 — Dos formas de decir lo mismo
 
 ```bash
 docker compose logs order-processor --tail 3
@@ -107,7 +75,7 @@ campos están *escondidos*.
 Con el primero puedes preguntar "dame las órdenes de Lima de más de 500 soles".
 Con el segundo no puedes preguntar nada: solo buscar texto.
 
-### Paso 3 — Por qué el generator no se arregla en el código
+### Paso 2 — Por qué el generator no se arregla en el código
 
 La tentación es cambiar el generator para que también emita JSON. **En este curso
 no lo hacemos a propósito**, porque en tu trabajo real te vas a encontrar
@@ -119,38 +87,59 @@ De eso se encarga Logstash.
 
 ---
 
-## Bloque 2 — Los dos caminos hacia Logstash
+## Bloque 2 — Abrir el segundo camino hacia Logstash
 
-### Paso 4 — El camino del processor: TCP
+El camino del `order-processor` ya funciona desde la Sesión 1: manda su JSON por
+TCP al puerto 5044. El del `order-generator` no existe todavía. Lo vas a abrir tú.
 
-Está funcionando desde la Sesión 1. En `services/order-processor/processor.py`,
-la clase `LogstashTCPHandler` abre un socket TCP contra `logstash:5044` y manda
-cada log como JSON terminado en salto de línea.
+### Paso 3 — Añadir el puerto syslog a Logstash
 
-Del otro lado, en `logstash/pipeline/orderflow.conf`:
-
-```ruby
-tcp {
-  port => 5044
-  codec => json_lines
-  tags => ["orderflow", "processor"]
-}
-```
-
-`json_lines` es el códec que entiende ese formato. Y `tags` marca el origen: nos
-va a servir para procesar cada flujo por separado.
-
-### Paso 5 — El camino del generator: el driver de Docker
-
-Al generator no le tocamos ni una línea de código. Lo que cambió está en
-`docker-compose.yml`:
+Abre `docker-compose.yml` y busca el servicio `logstash`. Dentro de su sección
+`ports:` verás una sola línea:
 
 ```yaml
-logging:
-  driver: syslog
-  options:
-    syslog-address: "udp://localhost:5000"
-    tag: "order-generator"
+    ports:
+      - "${LOGSTASH_TCP_PORT:-5044}:5044"
+```
+
+Añade debajo estas tres líneas:
+
+```yaml
+      # SESION 3: input syslog para los logs de texto plano del generator.
+      # Es UDP, no TCP: el driver syslog de Docker envia por datagramas.
+      - "${LOGSTASH_SYSLOG_PORT:-5000}:5000/udp"
+```
+
+> **Fíjate en el `/udp` del final.** Sin él, Docker abriría el puerto en TCP y los
+> datagramas de syslog se perderían sin dar ningún error.
+
+### Paso 4 — Enrutar los logs del generator
+
+Al generator no le vas a tocar ni una línea de código. Todo se resuelve en
+`docker-compose.yml`.
+
+Busca el servicio `order-generator` y localiza el final de su bloque:
+
+```yaml
+    depends_on:
+      redis:
+        condition: service_healthy
+```
+
+Pega esto justo debajo:
+
+```yaml
+    # --- SESION 3: enrutar los logs de texto plano hacia Logstash ---
+    # El driver de logging de Docker corre a nivel del daemon (dockerd),
+    # NO dentro de la red del contenedor. Por eso NO resuelve nombres de
+    # servicio de Compose como "logstash". Como dockerd y el puerto
+    # publicado de Logstash conviven en la misma maquina (o en la VM de
+    # Docker Desktop), "localhost" si funciona.
+    logging:
+      driver: syslog
+      options:
+        syslog-address: "udp://localhost:${LOGSTASH_SYSLOG_PORT:-5000}"
+        tag: "order-generator"
 ```
 
 Con eso, **Docker intercepta todo lo que el contenedor escribe** en su salida
@@ -166,16 +155,72 @@ estándar y lo reenvía por syslog.
 > Es de los errores más difíciles de diagnosticar cuando se hace mal, porque no
 > da ningún mensaje: los logs simplemente no llegan.
 
-Y en Logstash:
+### Paso 5 — Declarar el puerto en tu `.env`
 
-```ruby
-syslog {
-  port => 5000
-  tags => ["orderflow", "generator"]
-}
+Abre el archivo `.env` (no el `.env.example`) y busca la sección `# --- Logstash ---`.
+Añade la variable nueva debajo de `LOGSTASH_TCP_PORT`:
+
+```
+# Puerto syslog (UDP): recibe el texto plano del order-generator,
+# enrutado por el driver de logging de Docker. Anadido en la Sesion 3.
+LOGSTASH_SYSLOG_PORT=5000
 ```
 
-### Paso 6 — Verificar que los dos flujos llegan
+> Aunque el `docker-compose.yml` ya trae `:-5000` como valor por defecto, es buena
+> costumbre declararla: quien lea el `.env` verá todos los puertos del stack en un
+> solo sitio.
+
+### Paso 6 — Instalar el pipeline de Logstash
+
+Este archivo sí te lo damos hecho, porque son 120 líneas de configuración y hoy
+lo importante es **entenderlo**, no teclearlo.
+
+Coge el archivo **`orderflow.conf`** que descargaste de la plataforma y cópialo
+a la carpeta del pipeline, **reemplazando el que ya está**:
+
+**Windows (PowerShell):**
+```powershell
+Copy-Item "$HOME\Downloads\orderflow.conf" .\logstash\pipeline\orderflow.conf -Force
+```
+
+**Mac/Linux:**
+```bash
+cp ~/Downloads/orderflow.conf logstash/pipeline/orderflow.conf
+```
+
+Ajusta la ruta de origen si lo descargaste a otra carpeta.
+
+Comprueba que se copió bien:
+
+```bash
+docker compose config --services
+```
+
+**Qué debes ver:** los 13 nombres de siempre, sin errores de sintaxis.
+
+### Paso 7 — Aplicar los cambios
+
+```bash
+docker compose up -d --force-recreate order-generator logstash
+```
+
+**Qué debes ver:** Docker **recrea** esos dos servicios y deja `Running` los
+otros 11.
+
+> **¿Por qué `--force-recreate`?** Porque el driver de logging se asigna cuando el
+> contenedor **se crea**, no cuando se reinicia. Un `docker compose restart` no
+> serviría: el generator seguiría escribiendo a la salida estándar de siempre y
+> los logs no llegarían nunca. Es un fallo silencioso clásico.
+
+Confirma que sigues teniendo todo:
+
+```bash
+docker compose ps
+```
+
+**Qué debes ver:** 13 filas.
+
+### Paso 8 — Verificar que los dos flujos llegan
 
 ```bash
 docker compose logs logstash --tail 30
@@ -197,12 +242,34 @@ el comando pasados unos segundos.
 
 ---
 
-## Bloque 3 — Estructurar el texto plano con grok
+## Bloque 3 — Entender lo que acabas de instalar
 
-### Paso 7 — Qué hace grok
+Abre `logstash/pipeline/orderflow.conf` en VS Code. Tiene tres secciones:
+`input`, `filter` y `output`.
 
-`grok` toma una cadena de texto y extrae campos con un patrón. Abre
-`logstash/pipeline/orderflow.conf` y busca el bloque `generator`:
+### Paso 9 — Los dos inputs
+
+```ruby
+tcp {
+  port => 5044
+  codec => json_lines
+  tags => ["orderflow", "processor"]
+}
+
+syslog {
+  port => 5000
+  tags => ["orderflow", "generator"]
+}
+```
+
+`json_lines` es el códec que entiende el formato del processor: un JSON completo
+por línea. Y `tags` marca el origen de cada evento — eso es lo que permite
+procesar cada flujo por separado más abajo.
+
+### Paso 10 — Qué hace grok
+
+`grok` toma una cadena de texto y extrae campos con un patrón. Busca el bloque
+del `generator`:
 
 ```ruby
 grok {
@@ -225,10 +292,10 @@ Cada `%{TIPO:nombre}` captura un trozo y lo guarda como campo:
 > `"127.50"` como texto, y no podrías hacer sumas, promedios ni filtrar por
 > "mayor que". Con ellos, `total_amount` es un número de verdad.
 
-### Paso 8 — Los dos detalles que evitan errores silenciosos
+### Paso 11 — Los dos detalles que evitan errores silenciosos
 
-Fíjate en dos cosas del archivo, porque son las que diferencian una configuración
-que funciona de una que parece funcionar.
+Éstos son los que diferencian una configuración que funciona de una que **parece**
+funcionar.
 
 **1. El grok está dentro de un condicional:**
 
@@ -258,7 +325,7 @@ etiqueta `_dateparsefailure`.
 El síntoma en producción es horrible: los logs aparecen desplazados unos segundos
 respecto a las métricas, y correlacionar un incidente se vuelve imposible.
 
-### Paso 9 — Comprobar que no hay fallos de parseo
+### Paso 12 — Comprobar que no hay fallos de parseo
 
 ```bash
 curl -s "http://localhost:9200/orderflow-logs-*/_count?q=tags:_grokparsefailure"
@@ -274,7 +341,7 @@ tipo de comprobación que hay que hacer en un pipeline real y que casi nadie hac
 
 ## Bloque 4 — Consultar en Kibana
 
-### Paso 10 — Crear el Data View
+### Paso 13 — Crear el Data View
 
 Abre `http://localhost:5601` → menú lateral → **Discover**.
 
@@ -289,7 +356,7 @@ Si ya lo creaste en la Sesión 1, sáltate esto. Si no:
 **Qué debes ver:** el histograma de eventos y la lista de documentos. Si sale
 vacío, pon el rango de tiempo en **Last 15 minutes** y pulsa **Refresh**.
 
-### Paso 11 — Comprobar que los dos orígenes conviven
+### Paso 14 — Comprobar que los dos orígenes conviven
 
 En la barra de búsqueda (esto es **KQL**, el lenguaje de consulta de Kibana):
 
@@ -307,7 +374,7 @@ tags: "processor"
 campos `region`, `items_count` y `total_amount`, que **no existían en el texto
 original**: los creó grok.
 
-### Paso 12 — Consultas KQL que vas a usar de verdad
+### Paso 15 — Consultas KQL que vas a usar de verdad
 
 ```
 event: "order_failed"
@@ -332,7 +399,7 @@ region: "lima" and not level: "INFO"
 ```
 Todo lo que no sea informativo, en una región concreta.
 
-### Paso 13 — La correlación, que es el objetivo real
+### Paso 16 — La correlación, que es el objetivo real
 
 Éste es el ejercicio que resume las tres primeras sesiones.
 
@@ -398,12 +465,13 @@ extraería la marca de tiempo y el nivel del principio de la línea:
 
 | Síntoma | Causa probable | Solución |
 |---|---|---|
-| `git pull` da conflicto en `processor.py` | Hiciste el ejercicio de S2 | Paso 0 de este manual |
 | No entran logs del generator | El driver de logging no se aplicó | `docker compose up -d --force-recreate order-generator` |
 | Logstash no arranca | Error de sintaxis en el `.conf` | `docker compose logs logstash --tail 40` |
+| `docker compose config` da error | La indentación del bloque `logging:` | Va con **4 espacios**, al mismo nivel que `depends_on:` |
+| El puerto 5000 no aparece en `docker compose ps` | Falta el `/udp` al final | Revisa el Paso 3 |
 | `_count` de Elasticsearch da 0 | Logstash aún no arrancó | Espera 60 s; Logstash tarda |
 | Aparece `_grokparsefailure` | El patrón no casa con el texto | Compara el patrón con una línea real |
-| Aparece `_dateparsefailure` | Formato de fecha no contemplado | Revisa el bloque `date` del Paso 8 |
+| Aparece `_dateparsefailure` | Formato de fecha no contemplado | Revisa el bloque `date` del Paso 11 |
 | Discover vacío pero `_count` > 0 | Rango de tiempo o Data View | "Last 15 minutes" + Refresh |
 | Los logs salen desfasados unos segundos | El filtro `date` no está parseando | Comprueba `_dateparsefailure` |
 
@@ -412,7 +480,7 @@ extraería la marca de tiempo y el nivel del principio de la línea:
 ## Antes de la Sesión 4
 
 1. **Baja el stack:** `docker compose down` (sin `-v`).
-2. **Lee** `docs/grafana_kibana_intro.md`.
+2. **Lee** `docs/logstash_intro.md`. Repasa lo de hoy y prepara lo de la próxima.
 3. **Completa el entregable** con la plantilla `scripts/entregable_template.md`.
 
 > Con esto termina el Capítulo 1: ya sabes **capturar** métricas y logs. El

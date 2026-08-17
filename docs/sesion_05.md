@@ -32,32 +32,126 @@ Al terminar serás capaz de:
 
 ## Punto de partida
 
-Necesitas el stack de la Sesión 4 funcionando, con tu dashboard en
-`grafana/dashboards/orderflow-overview.json`.
+Necesitas dos cosas:
 
-**Paso 1.** Trae los cambios de esta sesión:
+1. El stack de la Sesión 4 funcionando, con tu dashboard en
+   `grafana/dashboards/orderflow-overview.json`.
+2. Los **cuatro archivos** que descargaste de la plataforma: `app.py`,
+   `Dockerfile`, `requirements.txt` y `orderflow-alerts.yml`.
 
-```bash
-git pull origin main
+### Paso 1 — Crear el microservicio que recibe las alertas
+
+El `webhook-receiver` es un servicio Flask de 80 líneas. Te lo damos hecho: hoy
+lo importante es **ver el JSON real de una alerta**, no escribir Python.
+
+Crea su carpeta y copia dentro los tres archivos:
+
+**Windows (PowerShell):**
+```powershell
+New-Item -ItemType Directory -Force -Path services\webhook-receiver
+Copy-Item "$HOME\Downloads\app.py","$HOME\Downloads\Dockerfile","$HOME\Downloads\requirements.txt" services\webhook-receiver\
 ```
 
-| Archivo | Qué cambia |
-|---|---|
-| `docker-compose.yml` | Dos servicios nuevos: `mailhog` y `webhook-receiver` |
-| `services/webhook-receiver/` | El microservicio Flask que recibe las alertas |
-| `prometheus/alerts.yml` | Pasa de `groups: []` a cuatro reglas (una la escribes tú) |
-| `alertmanager/alertmanager.yml` | Enrutamiento, receptores e inhibición reales |
-| `grafana/provisioning/alerting/` | La misma alerta, escrita al estilo Grafana |
-| `.env.example` | Los puertos de los dos servicios nuevos |
+**Mac/Linux:**
+```bash
+mkdir -p services/webhook-receiver
+cp ~/Downloads/{app.py,Dockerfile,requirements.txt} services/webhook-receiver/
+```
 
-**Paso 2.** Levanta el stack. El `--build` es necesario porque el
-`webhook-receiver` es código nuestro y hay que construir su imagen:
+Comprueba que están los tres:
+
+```bash
+ls services/webhook-receiver
+```
+
+### Paso 2 — Instalar la alerta de Grafana
+
+Este archivo lo mirarás al final de la sesión, para comparar dos formas de
+escribir la misma alerta.
+
+**Windows (PowerShell):**
+```powershell
+New-Item -ItemType Directory -Force -Path grafana\provisioning\alerting
+Copy-Item "$HOME\Downloads\orderflow-alerts.yml" grafana\provisioning\alerting\
+```
+
+**Mac/Linux:**
+```bash
+mkdir -p grafana/provisioning/alerting
+cp ~/Downloads/orderflow-alerts.yml grafana/provisioning/alerting/
+```
+
+### Paso 3 — Añadir los dos servicios al stack
+
+Abre `docker-compose.yml` y baja **al final del archivo**. Pega este bloque:
+
+```yaml
+  # ============================================================
+  # DESTINOS DE NOTIFICACION (anadidos en la Sesion 5)
+  # ============================================================
+  # Alertmanager ya estaba desde la Sesion 1, pero sin nadie a quien
+  # avisar. Estos dos servicios son ese "alguien": permiten ver una
+  # notificacion real sin cuenta de correo, sin SMTP externo y sin
+  # salir a internet.
+  # ============================================================
+
+  # Buzon SMTP de mentira. Acepta cualquier correo que le manden y lo
+  # muestra en una interfaz web en el puerto 8025, sin entregarlo a
+  # nadie. Es el estandar para probar envios de correo en desarrollo.
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: orderflow-mailhog
+    restart: unless-stopped
+    ports:
+      - "${MAILHOG_UI_PORT:-8025}:8025"
+      - "${MAILHOG_SMTP_PORT:-1025}:1025"
+    networks:
+      - orderflow-net
+
+  # Microservicio Flask que recibe el POST de Alertmanager y lo
+  # imprime formateado. Sirve para VER el JSON real de una alerta,
+  # que es lo que recibiria Slack, PagerDuty o un sistema de tickets.
+  webhook-receiver:
+    build:
+      context: ./services/webhook-receiver
+      dockerfile: Dockerfile
+    container_name: orderflow-webhook-receiver
+    restart: unless-stopped
+    ports:
+      - "${WEBHOOK_PORT:-5001}:5001"
+    networks:
+      - orderflow-net
+```
+
+> **`image:` contra `build:`.** MailHog usa una imagen que ya existe en Docker
+> Hub. El `webhook-receiver` no: su código es tuyo, está en la carpeta que
+> acabas de crear, y Docker tiene que **construir** la imagen a partir del
+> `Dockerfile`. Por eso el comando de levantado de hoy lleva `--build`.
+
+### Paso 4 — Declarar los puertos en tu `.env`
+
+Abre `.env` y añade al final:
+
+```
+# --- Destinos de notificacion (anadidos en la Sesion 5) ---
+# MailHog: buzon SMTP de prueba. 8025 es la interfaz web donde se leen
+# los correos; 1025 es el puerto SMTP al que escribe Alertmanager.
+MAILHOG_UI_PORT=8025
+MAILHOG_SMTP_PORT=1025
+# webhook-receiver: microservicio que imprime el JSON de la alerta.
+WEBHOOK_PORT=5001
+```
+
+### Paso 5 — Levantar
 
 ```bash
 docker compose up -d --build
 ```
 
-**Paso 3.** Comprueba que ahora son 15:
+La primera vez tarda ~40 segundos: Docker descarga MailHog y construye la imagen
+del webhook.
+
+**Paso 6.** Comprueba que ahora son 15:
 
 ```bash
 docker compose ps --format "table {{.Name}}\t{{.Status}}"
@@ -65,7 +159,7 @@ docker compose ps --format "table {{.Name}}\t{{.Status}}"
 
 En PowerShell funciona igual.
 
-**Paso 4.** Confirma que los dos nuevos responden:
+**Paso 7.** Confirma que los dos nuevos responden:
 
 ```bash
 curl -s http://localhost:5001/health
@@ -84,11 +178,143 @@ vacío. Al final de la sesión tendrá dentro un correo que nadie escribió a ma
 
 ## Bloque 1 — Las reglas: qué vigila Prometheus
 
-**Paso 5.** Abre `prometheus/alerts.yml` y léelo entero antes de tocar nada. Son
-cuatro reglas y un `TODO`.
+**Paso 8.** Abre `prometheus/alerts.yml`. Hoy dice esto:
 
-Fíjate en la anatomía de `TasaErrorAlta`, porque las cuatro partes hacen cosas
-distintas:
+```yaml
+groups: []
+```
+
+Ésa es la razón de que Alertmanager lleve cuatro sesiones sin recibir nada. Vamos
+a llenarlo.
+
+**Borra todo el contenido del archivo** y pega esto en su lugar:
+
+```yaml
+# ============================================================
+# Prometheus - Reglas de alerta
+# ============================================================
+# LOS NOMBRES DE METRICA NO SE ADIVINAN. Todos los que aparecen aqui
+# estan en docs/metricas.md y se pueden comprobar uno a uno en
+# http://localhost:8001/metrics. Una regla con un nombre inexistente
+# no da error: simplemente no dispara nunca, que es la peor forma de
+# fallar que puede tener una alerta.
+# ============================================================
+
+groups:
+
+  # ----------------------------------------------------------
+  # Grupo 1: disponibilidad de los servicios
+  # ----------------------------------------------------------
+  # 'up' es una metrica que genera el propio Prometheus por cada
+  # target: vale 1 si el ultimo scrape funciono, 0 si no. No hay que
+  # instrumentar nada para tenerla.
+  - name: orderflow_disponibilidad
+    rules:
+
+      - alert: ProcessorCaido
+        expr: up{job="order-processor"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: order-processor
+        annotations:
+          summary: "El order-processor esta caido"
+          description: >-
+            Prometheus no logra scrapear el order-processor
+            (instancia {{ $labels.instance }}) desde hace mas de 1 minuto.
+
+      - alert: GeneratorCaido
+        expr: up{job="order-generator"} == 0
+        for: 1m
+        labels:
+          severity: warning
+          service: order-generator
+        annotations:
+          summary: "El order-generator esta caido"
+          description: >-
+            El generador de ordenes no responde al scraping desde hace
+            mas de 1 minuto. El pipeline dejara de recibir ordenes nuevas.
+
+  # ----------------------------------------------------------
+  # Grupo 2: salud del procesamiento
+  # ----------------------------------------------------------
+  - name: orderflow_procesamiento
+    rules:
+
+      # Porcentaje de ordenes fallidas en los ultimos 5 minutos.
+      # Es la misma expresion del panel "Tasa de error %" de la
+      # Sesion 4: el dashboard y la alerta miran exactamente lo mismo,
+      # y eso es deliberado. Si difirieran, el grafico diria una cosa
+      # y el correo otra.
+      - alert: TasaErrorAlta
+        expr: >-
+          100 *
+          sum(rate(orderflow_orders_failed_total[5m]))
+          /
+          clamp_min(
+            sum(rate(orderflow_orders_processed_total[5m]))
+            + sum(rate(orderflow_orders_failed_total[5m])),
+            0.001
+          )
+          > 10
+        # 'for' es lo que separa una alerta util de una molesta: la
+        # condicion tiene que mantenerse 2 minutos seguidos. Un pico
+        # de 10 segundos no despierta a nadie.
+        for: 2m
+        labels:
+          severity: critical
+          service: order-processor
+        annotations:
+          summary: "Tasa de error de procesamiento por encima del 10%"
+          description: >-
+            La proporcion de ordenes fallidas es {{ printf "%.1f" $value }}%
+            en los ultimos 5 minutos (umbral: 10%).
+
+      # P95 de la latencia por encima de 1 segundo.
+      # Igual que en Grafana: el nombre termina en _bucket y el
+      # sum() conserva la etiqueta le. Sin esas dos cosas, la
+      # expresion devuelve NaN y la alerta jamas dispara.
+      - alert: LatenciaAltaP95
+        expr: >-
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(orderflow_processing_duration_seconds_bucket[5m]))
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+          service: order-processor
+        annotations:
+          summary: "Latencia p95 de procesamiento elevada"
+          description: >-
+            El percentil 95 de la latencia de procesamiento es
+            {{ printf "%.2f" $value }}s (umbral: 1s) durante los ultimos 5 min.
+
+      # ------------------------------------------------------
+      # TODO (Sesion 5) - Escribe tu la cuarta regla.
+      # ------------------------------------------------------
+      # Nombre:    SinOrdenesProcesadas
+      # Condicion: no se ha procesado NINGUNA orden en los ultimos
+      #            10 minutos. Es un atasco: el generator sigue
+      #            produciendo, pero nada sale por el otro lado.
+      # for:       10m
+      # severity:  warning
+      # service:   order-processor
+      #
+      # Pista: la tasa de un counter durante una ventana en la que no
+      # paso nada vale exactamente 0. Necesitas sum(rate(...[10m]))
+      # y compararlo con 0.
+      #
+      # El nombre de la metrica esta en docs/metricas.md.
+      # Cuando termines:  curl -X POST http://localhost:9090/-/reload
+      # ------------------------------------------------------
+```
+
+Guarda con `Ctrl+S`. **Ese `TODO` del final es el Ejercicio B**: lo escribirás tú
+más tarde.
+
+**Paso 9.** Ahora que lo tienes delante, fíjate en la anatomía de
+`TasaErrorAlta`, porque las cuatro partes hacen cosas distintas:
 
 | Parte | Qué hace |
 |---|---|
@@ -106,7 +332,7 @@ seguidos.
 > otra, llega el día en que el gráfico está verde y el correo dice que todo arde.
 > Nadie sabe a cuál creerle.
 
-**Paso 6.** Comprueba que Prometheus sabe a quién avisar. Abre
+**Paso 10.** Comprueba que Prometheus sabe a quién avisar. Abre
 `prometheus/prometheus.yml` y localiza estos dos bloques, que están ahí desde la
 Sesión 1:
 
@@ -122,7 +348,7 @@ rule_files:
 
 Sin `alerting`, Prometheus detectaría el problema y no se lo contaría a nadie.
 
-**Paso 7.** Recarga Prometheus sin reiniciarlo:
+**Paso 11.** Recarga Prometheus sin reiniciarlo:
 
 ```bash
 curl -X POST http://localhost:9090/-/reload
@@ -135,21 +361,128 @@ Invoke-RestMethod -Method Post http://localhost:9090/-/reload
 Esto funciona porque el contenedor arranca con `--web.enable-lifecycle`. Sin ese
 flag habría que reiniciar Prometheus y perderías el buffer de métricas en curso.
 
-**Paso 8.** Ve a `http://localhost:9090/alerts`.
+**Paso 12.** Ve a `http://localhost:9090/alerts`.
 
 Verás tus reglas agrupadas, todas en verde y en estado **Inactive**. Todavía no
 pasa nada malo. Eso es exactamente lo que debe verse en un sistema sano.
+
+> **Si no aparece ninguna regla**, el YAML tiene un error de sintaxis y
+> Prometheus rechazó el archivo entero:
+> `docker compose logs prometheus --tail 30`
 
 ---
 
 ## Bloque 2 — Alertmanager: a quién se avisa
 
-**Paso 9.** Abre `alertmanager/alertmanager.yml`.
-
 Prometheus **detecta**. Alertmanager **decide** a quién avisar, cuándo y cuántas
 veces. Son dos trabajos distintos y por eso son dos programas distintos.
 
-Tres mecanismos que conviene entender antes de seguir:
+**Paso 13.** Abre `alertmanager/alertmanager.yml`. Lo que hay es un receptor
+vacío: Alertmanager arranca, pero no avisa a nadie.
+
+**Borra todo el contenido** y pega esto:
+
+```yaml
+# ============================================================
+# Alertmanager - Configuracion de OrderFlow
+# ============================================================
+# Recargar sin reiniciar:
+#   curl -X POST http://localhost:9093/-/reload
+# ============================================================
+
+global:
+  # Cuanto espera antes de dar una alerta por resuelta si deja de
+  # recibir noticias de ella.
+  resolve_timeout: 5m
+
+  # SMTP de MailHog, el buzon de mentira que anadiste al compose en
+  # el Paso 3. No pide usuario, ni contrasena, ni TLS: por eso
+  # sirve para clase. En produccion aqui irian credenciales reales.
+  smtp_smarthost: 'mailhog:1025'
+  smtp_from: 'alertmanager@orderflow.local'
+  smtp_require_tls: false
+
+# ------------------------------------------------------------
+# Arbol de enrutamiento: que receiver atiende cada alerta.
+# ------------------------------------------------------------
+route:
+  receiver: 'equipo-datos-email'
+
+  # Agrupa en una sola notificacion las alertas que comparten estas
+  # etiquetas. Sin group_by, 40 ordenes fallando podrian generar 40
+  # correos. Con el, generan uno.
+  group_by: ['alertname', 'service']
+
+  # Espera antes del primer aviso de un grupo nuevo: da margen a que
+  # lleguen alertas hermanas y viajen juntas.
+  group_wait: 30s
+  # Espera antes de avisar de cambios dentro de un grupo ya notificado.
+  group_interval: 5m
+  # Cada cuanto se repite el aviso de algo que sigue roto.
+  repeat_interval: 3h
+
+  routes:
+    # Lo critico va al webhook, que es el canal urgente, y se repite
+    # cada hora en vez de cada tres.
+    - receiver: 'guardia-webhook'
+      matchers:
+        - severity="critical"
+      group_wait: 10s
+      repeat_interval: 1h
+      # continue: true hace que la alerta siga evaluandose contra las
+      # rutas hermanas despues de coincidir aqui. Sin esto, una alerta
+      # critica llegaria al webhook y a ningun sitio mas.
+      continue: true
+
+    # Ruta final sin matchers: casa con todo lo que llegue hasta aqui.
+    # Las alertas warning e info caen directamente. Las criticas caen
+    # tambien, porque la ruta anterior las dejo continuar.
+    #
+    # Ojo con este detalle: si esta ruta llevara matchers de
+    # warning|info, una alerta critica no casaria con ninguna ruta
+    # hermana despues de la primera y jamas llegaria al correo. Es un
+    # fallo silencioso clasico de Alertmanager.
+    - receiver: 'equipo-datos-email'
+
+# ------------------------------------------------------------
+# Receivers: a donde se envia cada notificacion.
+# ------------------------------------------------------------
+receivers:
+  - name: 'equipo-datos-email'
+    email_configs:
+      - to: 'equipo-datos@orderflow.local'
+        # Tambien avisa cuando la alerta se resuelve. Enterarse de
+        # que algo volvio a la normalidad es tan util como enterarse
+        # de que se rompio.
+        send_resolved: true
+
+  - name: 'guardia-webhook'
+    webhook_configs:
+      # webhook-receiver es el nombre del servicio en docker-compose.yml.
+      # Dentro de la red de Compose ese nombre resuelve solo: no hace
+      # falta IP ni localhost.
+      - url: 'http://webhook-receiver:5001/alertas'
+        send_resolved: true
+
+# ------------------------------------------------------------
+# Inhibicion: callar el ruido durante un incidente.
+# ------------------------------------------------------------
+# Si el processor esta caido (critical), la alerta de latencia alta
+# del mismo servicio (warning) no aporta nada: es una consecuencia,
+# no una causa. Esta regla la silencia mientras dure la critica.
+inhibit_rules:
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    # Solo inhibe entre alertas del MISMO servicio. Sin este equal,
+    # una critica de Postgres silenciaria los avisos de Redis.
+    equal: ['service']
+```
+
+Guarda con `Ctrl+S`.
+
+**Paso 14.** Tres mecanismos que acabas de configurar y conviene entender:
 
 **Agrupación.** `group_by: ['alertname', 'service']` junta en un solo aviso todas
 las alertas que comparten nombre y servicio. Sin esto, cuarenta órdenes fallando
@@ -171,7 +504,7 @@ servicio sobra: es una consecuencia, no una causa. El bloque `inhibit_rules` la
 silencia mientras dure la crítica. El `equal: ['service']` es lo que evita que
 una crítica de Postgres silencie los avisos de Redis.
 
-**Paso 10.** Recarga Alertmanager y comprueba que leyó la configuración nueva:
+**Paso 15.** Recarga Alertmanager y comprueba que leyó la configuración nueva:
 
 ```bash
 curl -X POST http://localhost:9093/-/reload
@@ -187,13 +520,13 @@ activa. Confirma que aparecen los dos receivers: `equipo-datos-email` y
 
 Hasta aquí todo es teoría con el sistema sano. Vamos a romperlo a propósito.
 
-**Paso 11.** Deja abierta una terminal mirando el webhook en vivo:
+**Paso 16.** Deja abierta una terminal mirando el webhook en vivo:
 
 ```bash
 docker compose logs -f webhook-receiver
 ```
 
-**Paso 12.** En otra terminal, sube la tasa de error simulada. Edita tu `.env`:
+**Paso 17.** En otra terminal, sube la tasa de error simulada. Edita tu `.env`:
 
 ```
 ERROR_RATE_PCT=30
@@ -202,13 +535,13 @@ ERROR_RATE_PCT=30
 Estaba en 5. Ahora fallará el 30 % de las órdenes, muy por encima del umbral del
 10 % de la regla.
 
-**Paso 13.** Aplica el cambio recreando solo el processor:
+**Paso 18.** Aplica el cambio recreando solo el processor:
 
 ```bash
 docker compose up -d order-processor
 ```
 
-**Paso 14.** Ve a `http://localhost:9090/alerts` y refresca cada 20 segundos.
+**Paso 19.** Ve a `http://localhost:9090/alerts` y refresca cada 20 segundos.
 
 Vas a ver tres estados, en este orden:
 
@@ -222,7 +555,7 @@ Ese paso de amarillo a rojo es el `for` haciendo su trabajo. Ten paciencia: entr
 que la ventana de 5 minutos se llena y que pasan los 2 minutos del `for`, pueden
 irse 4 o 5 minutos reales.
 
-**Paso 15.** En cuanto esté en **Firing**, mira las dos terminales:
+**Paso 20.** En cuanto esté en **Firing**, mira las dos terminales:
 
 - En `http://localhost:9093` la alerta aparece agrupada por `alertname` y `service`.
 - En la terminal del webhook aparece el JSON formateado, con severidad, servicio
@@ -231,7 +564,7 @@ irse 4 o 5 minutos reales.
 
 Nadie escribió ese correo. Lo escribió una regla de nueve líneas.
 
-**Paso 16 — Resolver el incidente.** Devuelve el `.env` a su valor sano:
+**Paso 21 — Resolver el incidente.** Devuelve el `.env` a su valor sano:
 
 ```
 ERROR_RATE_PCT=5
@@ -253,7 +586,7 @@ se arregló solo.
 
 ## Bloque 4 — Silenciar y comparar con Grafana
 
-**Paso 17 — Un silence.** Imagina que vas a hacer un mantenimiento y sabes que
+**Paso 22 — Un silence.** Imagina que vas a hacer un mantenimiento y sabes que
 vas a disparar alertas. Silenciarlas es mejor que borrarlas.
 
 En `http://localhost:9093` → **Silences → New Silence**:
@@ -273,12 +606,12 @@ nunca**. El silence vive en Alertmanager y solo afecta al aviso.
 
 Cuando termines, elimina el silence (**Expire**).
 
-**Paso 18 — La misma alerta, al estilo Grafana.** Abre Grafana →
+**Paso 23 — La misma alerta, al estilo Grafana.** Abre Grafana →
 **Alerting → Alert rules**. Verás `TasaErrorAlta (Grafana)` dentro de la carpeta
 `OrderFlow`.
 
-No la creó nadie a clics: llegó en el `git pull` de hoy, en
-`grafana/provisioning/alerting/orderflow-alerts.yml`.
+No la creó nadie a clics: es el archivo `orderflow-alerts.yml` que copiaste en el
+Paso 2, provisionado igual que el dashboard de la Sesión 4.
 
 Ábrela y fíjate en que la condición está partida en tres pasos encadenados:
 
@@ -293,7 +626,7 @@ en pantalla. Ninguno es mejor: Prometheus evalúa pegado al dato y enruta con
 Alertmanager, Grafana puede alertar sobre métricas **y logs** desde la misma
 herramienta donde está el panel.
 
-**Paso 19.** Ejecuta el validador:
+**Paso 24.** Ejecuta el validador:
 
 ```bash
 python scripts/validate_sesion5.py
@@ -369,9 +702,11 @@ ignoren las buenas.*
 | Síntoma | Causa probable | Solución |
 |---|---|---|
 | `webhook-receiver` no arranca | La imagen no se construyó | `docker compose up -d --build webhook-receiver` |
+| `failed to read dockerfile` al construir | Los 3 archivos no están en `services/webhook-receiver/` | Revisa el Paso 1 |
+| No aparece `TasaErrorAlta (Grafana)` | Falta el archivo del Paso 2 o Grafana no se recreó | `docker compose up -d --force-recreate grafana` |
 | Prometheus no muestra las reglas | No recargaste, o el YAML está mal | `docker compose logs prometheus --tail 30` |
 | La alerta nunca pasa de `Inactive` | El nombre de la métrica no existe | Pega la `expr` en la pestaña Graph y mira si devuelve algo |
-| Llega al webhook pero no a MailHog | La ruta final tiene matchers | Debe ir sin `matchers`, ver Paso 9 |
+| Llega al webhook pero no a MailHog | La ruta final tiene matchers | Debe ir sin `matchers`, ver Paso 13 |
 | MailHog vacío y sin errores | Alertmanager no recargó | `curl -X POST http://localhost:9093/-/reload` |
 | `dial tcp: connection refused` en los logs de Alertmanager | MailHog aún arrancando | Espera 30 s |
 | La alerta tarda muchísimo en disparar | Es normal | `rate([5m])` + `for: 2m` suman varios minutos reales |
@@ -388,7 +723,10 @@ Para cualquier otro problema: `docs/troubleshooting.md`.
 
 2. **Baja el stack:** `docker compose down` (sin `-v`).
 
-3. **Completa el entregable** con la plantilla `scripts/entregable_template.md`.
+3. **Descarga de la plataforma** los cinco archivos de la Sesión 6: los cuatro
+   notebooks `.ipynb` y su `requirements.txt`.
+
+4. **Completa el entregable** con la plantilla `scripts/entregable_template.md`.
 
 > En la Sesión 6 dejas de mirar por pantalla. Vas a consultar Prometheus y
 > Elasticsearch desde Python, y a construir un informe de salud del pipeline que

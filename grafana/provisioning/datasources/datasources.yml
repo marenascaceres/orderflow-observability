@@ -10,12 +10,6 @@ apiVersion: 1
 datasources:
   - name: Prometheus
     type: prometheus
-    # El uid se fija a mano a proposito. Si se omite, Grafana genera uno
-    # aleatorio en cada instalacion, y los dashboards versionados en el
-    # repo (Sesion 4) no encontrarian su origen de datos: cada panel
-    # mostraria "Datasource not found". Con el uid fijo, el mismo JSON
-    # funciona en la maquina de cualquier alumno.
-    uid: prometheus
     access: proxy
     url: http://prometheus:9090
     isDefault: true
@@ -25,7 +19,6 @@ datasources:
 
   - name: Elasticsearch
     type: elasticsearch
-    uid: elasticsearch
     access: proxy
     url: http://elasticsearch:9200
     editable: true

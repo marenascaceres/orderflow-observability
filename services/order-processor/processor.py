@@ -145,25 +145,28 @@ processor_up = Gauge(
 )
 
 # ------------------------------------------------------------
-# Instrumentado en la SESION 2 (ejercicio del alumno)
+# EJERCICIO DE LA SESION 2 - Instrumentar una metrica de negocio
 # ------------------------------------------------------------
-# La unica metrica del stack que mide NEGOCIO y no infraestructura.
-# Sin ella, un bug que procesara todas las ordenes con importe cero
-# pasaria inadvertido: el resto de metricas seguirian diciendo que
-# todo va bien.
+# Todas las metricas de arriba miden INFRAESTRUCTURA: cuantas ordenes,
+# cuanto tardan, cuantas fallan. Ninguna mide NEGOCIO: cuanto dinero
+# esta moviendo el pipeline.
 #
-# Es un Counter y no un Gauge porque el importe acumulado solo crece.
-# Lleva la unidad en el nombre (_soles_) para que dentro de seis meses
-# nadie tenga que preguntar si son soles o centimos.
+# Tu tarea: declarar aqui un Counter llamado
 #
-# La etiqueta es "region" y ninguna mas: anadir customer_id crearia
-# una serie temporal por cliente y tumbaria Prometheus.
+#     orderflow_order_amount_soles_total
+#
+# con la etiqueta "region", que acumule el importe de cada orden
+# procesada con exito.
+#
+# Un Counter puede incrementarse en cualquier cantidad, no solo de
+# uno en uno: .inc(127.50) es perfectamente valido.
+#
+# Cuando lo declares aqui, ve a process_one() y busca el segundo TODO.
+#
+# Los pasos detallados estan en el Bloque 4 del manual de la Sesion 2.
 # ------------------------------------------------------------
-order_amount = Counter(
-    "orderflow_order_amount_soles_total",
-    "Importe acumulado de las ordenes procesadas, en soles",
-    ["region"],
-)
+
+# TODO (Sesion 2): declara aqui el Counter orderflow_order_amount_soles_total
 
 # ============================================================
 # Conexiones
@@ -282,10 +285,9 @@ def process_one(pg_conn, order: dict) -> None:
 
             orders_processed.labels(region=region).inc()
 
-            # Sesion 2: un Counter acepta incrementos de cualquier tamano,
-            # no solo de uno en uno. Va DESPUES de persist_order() para no
-            # contabilizar dinero de ordenes que no llegaron a guardarse.
-            order_amount.labels(region=region).inc(order.get("total_amount", 0))
+            # TODO (Sesion 2): incrementa aqui tu Counter de importe.
+            # El monto de la orden esta en order["total_amount"].
+            # Recuerda que .inc() acepta un argumento numerico.
 
             log.info(
                 "Order processed",

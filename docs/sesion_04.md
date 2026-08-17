@@ -36,21 +36,102 @@ Al terminar serás capaz de:
 Necesitas el stack de la Sesión 3 funcionando: 13 servicios, con métricas en
 Prometheus y logs en Elasticsearch.
 
-**Paso 1.** Trae los cambios de esta sesión:
+Hoy no descargas nada. Los tres cambios de configuración de esta sesión los
+escribes tú, y son cortos.
 
-```bash
-git pull origin main
+### Paso 1 — Crear la carpeta de los dashboards
+
+Ahora mismo no existe. Créala en la raíz de tu repositorio:
+
+**Windows (PowerShell):**
+```powershell
+New-Item -ItemType Directory -Force -Path grafana\dashboards
 ```
 
-Esto añade tres cosas, ninguna de las cuales tienes que escribir tú:
+**Mac/Linux:**
+```bash
+mkdir -p grafana/dashboards
+```
 
-| Archivo | Qué cambia |
-|---|---|
-| `grafana/provisioning/datasources/datasources.yml` | Los datasources ahora tienen un `uid` fijo |
-| `grafana/provisioning/dashboards/dashboards.yml` | Pasa de `providers: []` a un provider real |
-| `docker-compose.yml` | Grafana monta la carpeta `grafana/dashboards/` |
+Aquí es donde vivirá tu dashboard al final de la sesión.
 
-**Paso 2.** Levanta el stack:
+### Paso 2 — Fijar el `uid` de los datasources
+
+Abre `grafana/provisioning/datasources/datasources.yml`. Verás dos datasources
+declarados, `Prometheus` y `Elasticsearch`.
+
+**En el primero**, justo debajo de `type: prometheus`, añade:
+
+```yaml
+    # El uid se fija a mano a proposito. Si se omite, Grafana genera uno
+    # aleatorio en cada instalacion, y los dashboards versionados en el
+    # repo (Sesion 4) no encontrarian su origen de datos: cada panel
+    # mostraria "Datasource not found". Con el uid fijo, el mismo JSON
+    # funciona en la maquina de cualquier alumno.
+    uid: prometheus
+```
+
+**En el segundo**, justo debajo de `type: elasticsearch`, añade:
+
+```yaml
+    uid: elasticsearch
+```
+
+### Paso 3 — Declarar el provider de dashboards
+
+Abre `grafana/provisioning/dashboards/dashboards.yml`. Hoy dice:
+
+```yaml
+providers: []
+```
+
+Esa línea vacía es la razón de que Grafana lleve tres sesiones sin un solo panel.
+**Bórrala** y pon esto en su lugar:
+
+```yaml
+providers:
+  - name: orderflow
+    orgId: 1
+    # Carpeta que veras en el menu Dashboards de Grafana.
+    folder: OrderFlow
+    type: file
+    # false = si alguien borra el JSON de la carpeta, Grafana borra
+    # tambien el dashboard. Lo dejamos en false para que el estado de
+    # Grafana siempre refleje el contenido del repo.
+    disableDeletion: false
+    # Cada 30s relee la carpeta. Editas el JSON, guardas, refrescas
+    # el navegador y ves el cambio: no hace falta reiniciar Grafana.
+    updateIntervalSeconds: 30
+    options:
+      # Esta ruta es la de DENTRO del contenedor. docker-compose.yml
+      # monta ./grafana/dashboards del repo justo aqui.
+      path: /etc/grafana/provisioning/dashboards/json
+      foldersFromFilesStructure: false
+```
+
+### Paso 4 — Montar la carpeta dentro de Grafana
+
+Grafana todavía no puede ver tu carpeta `grafana/dashboards/`: está fuera del
+contenedor. Hay que montarla.
+
+Abre `docker-compose.yml`, busca el servicio `grafana` y su sección `volumes:`:
+
+```yaml
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+```
+
+Añade una tercera línea debajo:
+
+```yaml
+      # Sesion 4: los dashboards viven versionados en el repo. El provider
+      # "orderflow" de grafana/provisioning/dashboards/dashboards.yml lee
+      # de esta ruta de dentro del contenedor.
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards/json:ro
+```
+
+### Paso 5 — Levantar y comprobar
 
 ```bash
 docker compose up -d
@@ -59,22 +140,23 @@ docker compose up -d
 Fíjate en la salida. Doce servicios dirán `Running`; **Grafana dirá `Recreated`**.
 Es el único que cambió: tiene un volumen nuevo. Los demás ni se enteran.
 
-**Paso 3.** Confirma que Grafana arrancó bien con su nueva configuración:
-
 ```bash
 docker compose logs grafana --tail 20
 ```
 
 No debe haber líneas con `level=error`.
 
+> **Si Grafana no dice `Recreated`**, es que el cambio del `docker-compose.yml` no
+> se guardó. Sin ese volumen, el resto de la sesión no funciona.
+
 ---
 
 ## Bloque 1 — Grafana ya tiene los datos conectados
 
-**Paso 4.** Abre `http://localhost:3000`. Usuario `admin`, contraseña `admin`.
+**Paso 6.** Abre `http://localhost:3000`. Usuario `admin`, contraseña `admin`.
 Si te pide cambiarla, puedes saltar el paso.
 
-**Paso 5.** Ve a **Connections → Data sources**. Verás dos, ya configurados:
+**Paso 7.** Ve a **Connections → Data sources**. Verás dos, ya configurados:
 
 - **Prometheus**, apuntando a `http://prometheus:9090`
 - **Elasticsearch**, apuntando a `http://elasticsearch:9200`
@@ -84,8 +166,8 @@ desde la Sesión 1. Esto es *provisioning*: configuración que llega como archiv
 como clics.
 
 Pulsa **Prometheus** y fíjate en la URL de tu navegador. Termina en
-`/datasources/edit/prometheus`. Ese `prometheus` final es el **uid**, y es lo que
-cambió con el `git pull` de hoy.
+`/datasources/edit/prometheus`. Ese `prometheus` final es el **uid**, y es el que
+acabas de fijar tú en el Paso 2.
 
 > **Por qué importa el uid.** Un dashboard guardado en JSON no dice "usa
 > Prometheus"; dice "usa el datasource con uid `prometheus`". Si Grafana genera
@@ -94,7 +176,7 @@ cambió con el `git pull` de hoy.
 > *Datasource not found* en cada panel. Fijarlo a mano es lo que hace el
 > dashboard portable.
 
-**Paso 6.** Ve a **Explore** (el icono de la brújula), elige el datasource
+**Paso 8.** Ve a **Explore** (el icono de la brújula), elige el datasource
 **Prometheus** y ejecuta:
 
 ```promql
@@ -108,7 +190,7 @@ Explore es para investigar; los dashboards son para vigilar.
 
 ## Bloque 2 — Los cuatro paneles de negocio
 
-**Paso 7.** **Dashboards → New → New dashboard → Add visualization**. Elige el
+**Paso 9.** **Dashboards → New → New dashboard → Add visualization**. Elige el
 datasource **Prometheus**.
 
 Cada panel se construye igual: escribes la consulta abajo, eliges el tipo de
@@ -247,7 +329,7 @@ traduce el exporter.
 Ahora mismo el panel de throughput dibuja todas las regiones mezcladas. Vamos a
 darle un filtro.
 
-**Paso 8.** **Dashboard settings** (el engranaje) **→ Variables → New variable**.
+**Paso 10.** **Dashboard settings** (el engranaje) **→ Variables → New variable**.
 
 | Campo | Valor |
 |---|---|
@@ -264,9 +346,9 @@ darle un filtro.
 Abajo, en **Preview of values**, deben aparecer tus regiones. Si sale vacío, la
 métrica está mal escrita.
 
-**Paso 9.** **Apply → Save dashboard.** Ponle de título `OrderFlow — Overview`.
+**Paso 11.** **Apply → Save dashboard.** Ponle de título `OrderFlow — Overview`.
 
-**Paso 10.** Edita el **Panel 1** y cambia su consulta para que use la variable:
+**Paso 12.** Edita el **Panel 1** y cambia su consulta para que use la variable:
 
 ```promql
 rate(orderflow_orders_processed_total{region=~"$region"}[1m])
@@ -276,7 +358,7 @@ Usa `=~` (coincide con expresión regular), no `=`. Con la opción *Multi-value*
 activada, Grafana sustituye `$region` por `lima|arequipa|cusco`, y eso solo casa
 con el operador de expresión regular.
 
-**Paso 11.** Guarda y prueba el desplegable **Región** de arriba a la izquierda.
+**Paso 13.** Guarda y prueba el desplegable **Región** de arriba a la izquierda.
 Un solo dashboard sirve ahora para todas las regiones. Sin variables, harían falta
 tantos dashboards duplicados como regiones.
 
@@ -287,13 +369,13 @@ tantos dashboards duplicados como regiones.
 Todo lo que has construido vive en la base de datos interna de Grafana, dentro del
 volumen `grafana_data`. Vamos a demostrar por qué eso no basta, y a arreglarlo.
 
-**Paso 12.** **Dashboard settings → JSON Model.** Ahí está tu dashboard entero:
+**Paso 14.** **Dashboard settings → JSON Model.** Ahí está tu dashboard entero:
 paneles, consultas, umbrales, la variable. Es un documento de texto.
 
 Pulsa **Copy to clipboard**.
 
-**Paso 13.** Guárdalo en tu repositorio, en la carpeta que Docker ya está montando
-dentro de Grafana:
+**Paso 15.** Guárdalo en tu repositorio, en la carpeta que creaste en el Paso 1 y
+que Docker está montando dentro de Grafana:
 
 ```
 grafana/dashboards/orderflow-overview.json
@@ -301,7 +383,7 @@ grafana/dashboards/orderflow-overview.json
 
 Pega el contenido tal cual y guarda el archivo.
 
-**Paso 14.** Busca en ese JSON la línea `"id": <número>` de las primeras líneas y
+**Paso 16.** Busca en ese JSON la línea `"id": <número>` de las primeras líneas y
 cámbiala por:
 
 ```json
@@ -315,14 +397,14 @@ pertenece a otro dashboard. Con `null`, cada instalación le asigna el suyo.
 Comprueba también que exista una línea `"uid": "orderflow-overview"`. Si tu JSON
 trae otro uid, cámbialo por ese: es el que va a buscar el validador.
 
-**Paso 15.** Espera 30 segundos —el provider relee la carpeta en ese intervalo— y
+**Paso 17.** Espera 30 segundos —el provider relee la carpeta en ese intervalo— y
 recarga Grafana. Ve a **Dashboards**. Ahora verás **una carpeta llamada
 `OrderFlow`** que antes no existía, y dentro, tu dashboard.
 
 Ese de la carpeta es el provisionado desde archivo. El que guardaste a clics sigue
 suelto en *General*.
 
-**Paso 16 — La prueba de fuego.** Borra el dashboard que está en `OrderFlow`
+**Paso 18 — La prueba de fuego.** Borra el dashboard que está en `OrderFlow`
 (**Dashboard settings → Delete dashboard**).
 
 Espera 30 segundos y recarga.
@@ -333,7 +415,7 @@ lo que quieres en producción — y es la razón por la que el dashboard ahora e
 código: se versiona en git, se revisa antes de fusionar, y se recrea solo en
 cualquier máquina que levante el stack.
 
-**Paso 17.** Borra el que quedó suelto en *General*, para no tener dos.
+**Paso 19.** Borra el que quedó suelto en *General*, para no tener dos.
 
 ---
 
@@ -342,7 +424,7 @@ cualquier máquina que levante el stack.
 En la Sesión 3 dejaste el Data View `orderflow-logs-*` creado y aprendiste a
 buscar en Discover. Hoy conviertes esas búsquedas en gráficos.
 
-**Paso 18.** Abre `http://localhost:5601` → **Discover**. Comprueba que el Data
+**Paso 20.** Abre `http://localhost:5601` → **Discover**. Comprueba que el Data
 View es `orderflow-logs-*` y el rango de tiempo, los últimos 15 minutos.
 
 Aplica el filtro:
@@ -354,7 +436,7 @@ level: "ERROR"
 Pulsa **Save** arriba a la derecha y llámalo `Errores OrderFlow`. Una búsqueda
 guardada se puede reutilizar en un dashboard sin volver a escribirla.
 
-**Paso 19 — Visualización 1: motivos de fallo.**
+**Paso 21 — Visualización 1: motivos de fallo.**
 
 **Analytics → Visualize Library → Create visualization → Lens.**
 
@@ -370,7 +452,7 @@ Guarda como `Fallos por motivo`.
 > no está aplicado en esta pantalla y no hay documentos de fallo en el rango de
 > tiempo. Amplía el rango a las últimas 4 horas.
 
-**Paso 20 — Visualización 2: negocio contra operación.**
+**Paso 22 — Visualización 2: negocio contra operación.**
 
 Nueva visualización Lens:
 
@@ -384,14 +466,14 @@ Ese campo `event_category` no venía en los logs. Lo creó el filtro de Logstash
 configuraste en la Sesión 3. Los datos que estás graficando ahora son consecuencia
 directa de aquel archivo.
 
-**Paso 21 — El dashboard.**
+**Paso 23 — El dashboard.**
 
 **Analytics → Dashboard → Create dashboard → Add from library.** Añade las dos
 visualizaciones y la búsqueda guardada `Errores OrderFlow`.
 
 Guarda el dashboard como `OrderFlow — Logs`.
 
-**Paso 22.** Ejecuta el validador:
+**Paso 24.** Ejecuta el validador:
 
 ```bash
 python scripts/validate_sesion4.py
@@ -444,12 +526,13 @@ Bloque 4 de la Sesión 2.*
 
 | Síntoma | Causa probable | Solución |
 |---|---|---|
-| Los paneles dicen `Datasource not found` | El `git pull` no trajo los uid, o Grafana no se recreó | `docker compose up -d --force-recreate grafana` |
-| No aparece la carpeta `OrderFlow` en Dashboards | El JSON tiene un error de sintaxis | `docker compose logs grafana --tail 30`, busca `level=error` |
+| Los paneles dicen `Datasource not found` | Falta el `uid` en `datasources.yml`, o Grafana no se recreó | Revisa el Paso 2; luego `docker compose up -d --force-recreate grafana` |
+| Grafana no dijo `Recreated` al levantar | No se guardó el volumen del Paso 4 | Revisa `docker-compose.yml` y repite `docker compose up -d` |
+| No aparece la carpeta `OrderFlow` en Dashboards | Error de sintaxis en `dashboards.yml` o en el JSON | `docker compose logs grafana --tail 30`, busca `level=error` |
 | La carpeta aparece pero vacía | El archivo no está en `grafana/dashboards/` o no termina en `.json` | Comprueba la ruta y el nombre |
-| El panel P95 muestra `NaN` | Falta `_bucket` o falta `sum by (le)` | Revisa el Paso 7, Panel 3 |
-| El panel de Postgres sale vacío | Ese nombre de métrica no existe en tu exporter | Búscalo en `http://localhost:9187/metrics`, Paso 7 |
-| El desplegable `Región` sale vacío | La métrica de la variable está mal escrita | Revisa el Paso 8, campo *Metric* |
+| El panel P95 muestra `NaN` | Falta `_bucket` o falta `sum by (le)` | Revisa el Paso 9, Panel 3 |
+| El panel de Postgres sale vacío | Ese nombre de métrica no existe en tu exporter | Búscalo en `http://localhost:9187/metrics`, Panel 5 |
+| El desplegable `Región` sale vacío | La métrica de la variable está mal escrita | Revisa el Paso 10, campo *Metric* |
 | En Kibana no aparece el campo `reason` | No hay documentos de fallo en el rango | Amplía el rango de tiempo a 4 horas |
 | El dashboard borrado no vuelve | Aún no pasaron 30 s, o el archivo no se guardó | Espera y recarga; comprueba el archivo en disco |
 
@@ -466,7 +549,12 @@ Para cualquier otro problema: `docs/troubleshooting.md`.
 
 2. **Deja tu `orderflow-overview.json` guardado.** La Sesión 5 lo da por hecho.
 
-3. **Completa el entregable** con la plantilla `scripts/entregable_template.md`.
+3. **Descarga de la plataforma** los cuatro archivos de la Sesión 5: `app.py`,
+   `Dockerfile`, `requirements.txt` y `orderflow-alerts.yml`.
+
+4. **Lee** `docs/alertas_intro.md`. Es corto y da el contexto de la próxima sesión.
+
+5. **Completa el entregable** con la plantilla `scripts/entregable_template.md`.
 
 > En la Sesión 5 se llena la tercera y última caja: Alertmanager. La consulta del
 > panel de tasa de error deja de ser un color en pantalla y pasa a ser un correo

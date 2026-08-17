@@ -31,17 +31,33 @@ Al terminar serás capaz de:
 
 ## Punto de partida
 
-**Paso 1.** Trae los cambios de esta sesión:
+Necesitas los **cinco archivos** que descargaste de la plataforma: los cuatro
+notebooks `.ipynb` y su `requirements.txt`.
 
-```bash
-git pull origin main
+**Paso 1.** Crea la carpeta `notebooks/` en tu repositorio y copia dentro los
+cinco archivos:
+
+**Windows (PowerShell):**
+```powershell
+New-Item -ItemType Directory -Force -Path notebooks
+Copy-Item "$HOME\Downloads\*.ipynb","$HOME\Downloads\requirements.txt" notebooks\
 ```
 
-| Archivo | Qué trae |
-|---|---|
-| `notebooks/` | Los cuatro notebooks de hoy |
-| `notebooks/requirements.txt` | Las dependencias de Python |
-| `docs/soluciones/sesion_05.md` | La regla de alerta del ejercicio anterior |
+**Mac/Linux:**
+```bash
+mkdir -p notebooks
+cp ~/Downloads/*.ipynb ~/Downloads/requirements.txt notebooks/
+```
+
+Comprueba que están los cinco:
+
+```bash
+ls notebooks
+```
+
+> **Cuidado con `requirements.txt`.** Ya existen otros dos en tu repositorio, uno
+> por cada servicio Python. Éste es distinto y va en `notebooks/`. Si lo copias
+> encima de `services/order-processor/requirements.txt`, rompes el processor.
 
 **Paso 2.** Levanta el stack y comprueba que `ERROR_RATE_PCT` está en `5`:
 
