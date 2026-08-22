@@ -102,9 +102,9 @@ Tres causas comunes:
 1. **No creaste el Data View.** Menú → Stack Management → Data Views → Create. Index pattern: `orderflow-logs-*`, Timestamp field: `@timestamp`.
 2. **Rango de tiempo incorrecto.** Arriba a la derecha, ajusta a "Last 15 minutes".
 3. **Logstash aún no ingesta.** Verifica:
-   ```bash
-   docker compose logs logstash | tail
-   curl http://localhost:9200/_cat/indices | grep orderflow
+   ```powershell
+   docker compose logs logstash --tail 20
+   (Invoke-WebRequest -UseBasicParsing "http://localhost:9200/_cat/indices").Content -split "`n" | Select-String orderflow
    ```
    Debe aparecer al menos un índice `orderflow-logs-YYYY.MM.dd`.
 
@@ -112,7 +112,7 @@ Tres causas comunes:
 
 Verifica que Logstash esté escuchando en 5044:
 ```bash
-docker compose logs logstash | grep -i "starting.*5044"
+docker compose logs logstash | Select-String "starting.*5044"
 ```
 Si no aparece, revisa `logstash/config/logstash.yml` y la pipeline en `logstash/pipeline/orderflow.conf`.
 
@@ -159,10 +159,20 @@ has llegado, que no aparezcan es lo correcto.
 
 Comprueba primero si el exporter responde de verdad:
 
+```powershell
+(Invoke-WebRequest -UseBasicParsing "http://localhost:9187/metrics").Content -split "`n" | Select-Object -First 5   # postgres
+(Invoke-WebRequest -UseBasicParsing "http://localhost:9121/metrics").Content -split "`n" | Select-Object -First 5   # redis
+```
+
+<details>
+<summary>La misma orden en Linux o Mac</summary>
+
 ```bash
 curl -s http://localhost:9187/metrics | head -5     # postgres
 curl -s http://localhost:9121/metrics | head -5     # redis
 ```
+
+</details>
 
 Si no responde, casi siempre es la contraseña: el `DATA_SOURCE_NAME` del
 `postgres-exporter` se construye con las variables de tu `.env`. Si cambiaste
@@ -178,9 +188,18 @@ docker compose logs postgres-exporter --tail 20
 Los nombres que expone un exporter dependen de su versión y de qué colectores
 tenga activos. **No los des por sabidos: pregúntaselos.**
 
+```powershell
+(Invoke-WebRequest -UseBasicParsing "http://localhost:9187/metrics").Content -split "`n" | Select-String "^   # HELP pg_stat_database"
+```
+
+<details>
+<summary>La misma orden en Linux o Mac</summary>
+
 ```bash
 curl -s http://localhost:9187/metrics | grep "^# HELP pg_stat_database"
 ```
+
+</details>
 
 Usa el nombre que salga de ahí. Lo mismo con `redis_` en el puerto 9121.
 
@@ -202,10 +221,20 @@ que es lo que uno escribiría por instinto.
 Ninguno de los dos hace fallar nada: el documento entra en Elasticsearch igual,
 pero mal. Por eso hay que buscarlos a propósito.
 
+```powershell
+Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:_grokparsefailure"
+Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:_dateparsefailure"
+```
+
+<details>
+<summary>La misma orden en Linux o Mac</summary>
+
 ```bash
 curl -s "http://localhost:9200/orderflow-logs-*/_count?q=tags:_grokparsefailure"
 curl -s "http://localhost:9200/orderflow-logs-*/_count?q=tags:_dateparsefailure"
 ```
+
+</details>
 
 - **grok**: el patrón no casa con el texto. Compara el patrón con una línea real.
 - **date**: el formato de fecha no está contemplado. El processor emite
@@ -231,7 +260,7 @@ El provider relee la carpeta cada 30 segundos, así que espera antes de dudar. S
 pasado ese tiempo no aparece, suele ser un error de sintaxis en el JSON:
 
 ```bash
-docker compose logs grafana --tail 30 | grep -i error
+docker compose logs grafana --tail 30 | Select-String error
 ```
 
 ### Una alerta nunca sale de `Inactive` (Sesión 5)
@@ -257,8 +286,8 @@ ella.
 
 ### MailHog vacío (Sesión 5)
 
-```bash
-curl -X POST http://localhost:9093/-/reload
+```powershell
+Invoke-RestMethod -Method Post http://localhost:9093/-/reload
 docker compose logs alertmanager --tail 20
 ```
 
@@ -280,9 +309,18 @@ así que el cliente tiene que ser 8.x.
 Prometheus **no da error** cuando la métrica no existe: devuelve una lista vacía,
 igual que si existiera y no tuviera datos. Compruébalo:
 
+```powershell
+(Invoke-WebRequest -UseBasicParsing "http://localhost:9090/api/v1/label/__name__/values").Content -split "`n" | Select-String orderflow
+```
+
+<details>
+<summary>La misma orden en Linux o Mac</summary>
+
 ```bash
 curl -s http://localhost:9090/api/v1/label/__name__/values | grep orderflow
 ```
+
+</details>
 
 El notebook 1 trae una función `existe()` para esto mismo.
 

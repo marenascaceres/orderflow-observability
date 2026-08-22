@@ -161,18 +161,97 @@ En PowerShell funciona igual.
 
 **Paso 7.** Confirma que los dos nuevos responden:
 
+```powershell
+Invoke-RestMethod http://localhost:5001/health
+```
+
+<details>
+<summary>La misma orden en Linux o Mac</summary>
+
 ```bash
 curl -s http://localhost:5001/health
 ```
 
-```powershell
-Invoke-RestMethod http://localhost:5001/health
-```
+</details>
 
 Debe devolver `{"status":"up"}`.
 
 Y abre `http://localhost:8025` en el navegador: es MailHog, un buzón de correo
 vacío. Al final de la sesión tendrá dentro un correo que nadie escribió a mano.
+
+---
+
+## Dónde se escribe cada cosa
+
+Este manual mezcla varios sitios distintos. Antes de empezar, ten claro cuál es cuál:
+
+| Si el bloque empieza por… | Va en… |
+|---|---|
+| `docker`, `Invoke-WebRequest` | **PowerShell**, siempre desde la carpeta del repositorio |
+| `rate(`, `sum(`, `increase(`, `count(` | **El navegador**, en `http://localhost:9090` → pestaña **Graph** |
+| Texto con sangría (YAML, Python) | **VS Code**, en el archivo que se indique |
+| `http://localhost:...` a secas | **El navegador** |
+
+**Todos los comandos de Docker de este curso se escriben desde la carpeta del
+repositorio.** Tu PowerShell debe mostrar algo así antes del cursor:
+
+```
+PS D:\...\orderflow-observability>
+```
+
+Si no es así, colócate ahí antes de nada:
+
+```powershell
+cd C:\ruta\donde\clonaste\orderflow-observability
+```
+
+`docker compose` no adivina qué stack quieres manejar: busca el archivo
+`docker-compose.yml` **en la carpeta donde estás parado**. Desde otro sitio te
+dirá que no encuentra ninguna configuración.
+
+> **Y si un comando te responde «no se reconoce el término X»**, no está roto tu
+> ordenador: ese comando es de otro idioma. `head`, `tail`, `grep` y `wc` son de
+> Linux y Mac. En Windows PowerShell se dice así:
+>
+> | Quiero… | Linux / Mac | Windows PowerShell |
+> |---|---|---|
+> | Ver solo el principio | `head -20` | `Select-Object -First 20` |
+> | Ver solo el final | `tail -20` | `Select-Object -Last 20` |
+> | Buscar una palabra | `grep queue` | `Select-String queue` |
+> | Contar líneas | `wc -l` | `Measure-Object -Line` |
+
+---
+
+## Cómo pegar los bloques de código sin romperlos
+
+Varios pasos de hoy te piden pegar bloques largos. **Al copiarlos desde el
+documento de Word, los espacios del principio de cada línea se pierden.** Y esos
+espacios no son decoración: son lo único que indica qué pertenece a qué.
+
+Piensa en una lista de la compra:
+
+```
+FRUTAS:
+    manzanas
+    peras
+```
+
+Lo que hace que «manzanas» sea una fruta es que está **escrita más a la derecha**
+que FRUTAS. Si la pegas pegada al margen, deja de ser una fruta y se convierte en
+una sección nueva.
+
+**Después de pegar cualquier bloque, comprueba esto:**
+
+1. Mira la barra azul de abajo a la derecha de VS Code. Debe decir `Spaces: 2`.
+   Si dice otra cosa, haz clic ahí → *Indent Using Spaces* → **2**.
+2. Compara la primera línea que pegaste con la línea equivalente que ya existía
+   más arriba. **Tienen que empezar en la misma columna.**
+3. Si tu bloque quedó más a la izquierda: selecciónalo entero (clic en el número
+   de la primera línea, `Shift` + clic en el de la última) y pulsa **`Tab`** una
+   vez. Se desplaza todo de golpe.
+
+`Shift+Tab` lo desplaza en sentido contrario, y `Ctrl+Z` deshace. No hay forma de
+romper nada de manera irreversible.
 
 ---
 
@@ -306,7 +385,8 @@ groups:
       # y compararlo con 0.
       #
       # El nombre de la metrica esta en docs/metricas.md.
-      # Cuando termines:  curl -X POST http://localhost:9090/-/reload
+      # Cuando termines, recarga Prometheus:
+      #   Invoke-RestMethod -Method Post http://localhost:9090/-/reload
       # ------------------------------------------------------
 ```
 
@@ -350,13 +430,18 @@ Sin `alerting`, Prometheus detectaría el problema y no se lo contaría a nadie.
 
 **Paso 11.** Recarga Prometheus sin reiniciarlo:
 
+```powershell
+Invoke-RestMethod -Method Post http://localhost:9090/-/reload
+```
+
+<details>
+<summary>La misma orden en Linux o Mac</summary>
+
 ```bash
 curl -X POST http://localhost:9090/-/reload
 ```
 
-```powershell
-Invoke-RestMethod -Method Post http://localhost:9090/-/reload
-```
+</details>
 
 Esto funciona porque el contenedor arranca con `--web.enable-lifecycle`. Sin ese
 flag habría que reiniciar Prometheus y perderías el buffer de métricas en curso.
@@ -387,7 +472,7 @@ vacío: Alertmanager arranca, pero no avisa a nadie.
 # Alertmanager - Configuracion de OrderFlow
 # ============================================================
 # Recargar sin reiniciar:
-#   curl -X POST http://localhost:9093/-/reload
+#   Invoke-RestMethod -Method Post http://localhost:9093/-/reload
 # ============================================================
 
 global:
@@ -506,9 +591,18 @@ una crítica de Postgres silencie los avisos de Redis.
 
 **Paso 15.** Recarga Alertmanager y comprueba que leyó la configuración nueva:
 
+```powershell
+Invoke-RestMethod -Method Post http://localhost:9093/-/reload
+```
+
+<details>
+<summary>La misma orden en Linux o Mac</summary>
+
 ```bash
 curl -X POST http://localhost:9093/-/reload
 ```
+
+</details>
 
 Abre `http://localhost:9093` → pestaña **Status**. Abajo verás la configuración
 activa. Confirma que aparecen los dos receivers: `equipo-datos-email` y
@@ -641,13 +735,18 @@ python scripts/validate_sesion5.py
 Con una alerta disparada, consulta la API de Alertmanager y averigua **a qué
 receptores** se envió, y **cuántas alertas** hay agrupadas en ese momento:
 
+```powershell
+Invoke-RestMethod http://localhost:9093/api/v2/alerts
+```
+
+<details>
+<summary>La misma orden en Linux o Mac</summary>
+
 ```bash
 curl -s http://localhost:9093/api/v2/alerts
 ```
 
-```powershell
-Invoke-RestMethod http://localhost:9093/api/v2/alerts
-```
+</details>
 
 Anota el nombre del receptor y el número de alertas activas.
 
@@ -665,8 +764,8 @@ la regla `SinOrdenesProcesadas`:
 
 Después recárgala y compruébala provocando el atasco:
 
-```bash
-curl -X POST http://localhost:9090/-/reload
+```powershell
+Invoke-RestMethod -Method Post http://localhost:9090/-/reload
 docker compose stop order-processor
 ```
 
@@ -707,7 +806,7 @@ ignoren las buenas.*
 | Prometheus no muestra las reglas | No recargaste, o el YAML está mal | `docker compose logs prometheus --tail 30` |
 | La alerta nunca pasa de `Inactive` | El nombre de la métrica no existe | Pega la `expr` en la pestaña Graph y mira si devuelve algo |
 | Llega al webhook pero no a MailHog | La ruta final tiene matchers | Debe ir sin `matchers`, ver Paso 13 |
-| MailHog vacío y sin errores | Alertmanager no recargó | `curl -X POST http://localhost:9093/-/reload` |
+| MailHog vacío y sin errores | Alertmanager no recargó | `Invoke-RestMethod -Method Post http://localhost:9093/-/reload` |
 | `dial tcp: connection refused` en los logs de Alertmanager | MailHog aún arrancando | Espera 30 s |
 | La alerta tarda muchísimo en disparar | Es normal | `rate([5m])` + `for: 2m` suman varios minutos reales |
 | Cambié `.env` y no pasa nada | Falta recrear el contenedor | `docker compose up -d order-processor` |

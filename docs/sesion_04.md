@@ -151,6 +151,80 @@ No debe haber líneas con `level=error`.
 
 ---
 
+## Dónde se escribe cada cosa
+
+Este manual mezcla varios sitios distintos. Antes de empezar, ten claro cuál es cuál:
+
+| Si el bloque empieza por… | Va en… |
+|---|---|
+| `docker`, `Invoke-WebRequest` | **PowerShell**, siempre desde la carpeta del repositorio |
+| `rate(`, `sum(`, `increase(`, `count(` | **El navegador**, en `http://localhost:9090` → pestaña **Graph** |
+| Texto con sangría (YAML, Python) | **VS Code**, en el archivo que se indique |
+| `http://localhost:...` a secas | **El navegador** |
+
+**Todos los comandos de Docker de este curso se escriben desde la carpeta del
+repositorio.** Tu PowerShell debe mostrar algo así antes del cursor:
+
+```
+PS D:\...\orderflow-observability>
+```
+
+Si no es así, colócate ahí antes de nada:
+
+```powershell
+cd C:\ruta\donde\clonaste\orderflow-observability
+```
+
+`docker compose` no adivina qué stack quieres manejar: busca el archivo
+`docker-compose.yml` **en la carpeta donde estás parado**. Desde otro sitio te
+dirá que no encuentra ninguna configuración.
+
+> **Y si un comando te responde «no se reconoce el término X»**, no está roto tu
+> ordenador: ese comando es de otro idioma. `head`, `tail`, `grep` y `wc` son de
+> Linux y Mac. En Windows PowerShell se dice así:
+>
+> | Quiero… | Linux / Mac | Windows PowerShell |
+> |---|---|---|
+> | Ver solo el principio | `head -20` | `Select-Object -First 20` |
+> | Ver solo el final | `tail -20` | `Select-Object -Last 20` |
+> | Buscar una palabra | `grep queue` | `Select-String queue` |
+> | Contar líneas | `wc -l` | `Measure-Object -Line` |
+
+---
+
+## Cómo pegar los bloques de código sin romperlos
+
+Varios pasos de hoy te piden pegar bloques largos. **Al copiarlos desde el
+documento de Word, los espacios del principio de cada línea se pierden.** Y esos
+espacios no son decoración: son lo único que indica qué pertenece a qué.
+
+Piensa en una lista de la compra:
+
+```
+FRUTAS:
+    manzanas
+    peras
+```
+
+Lo que hace que «manzanas» sea una fruta es que está **escrita más a la derecha**
+que FRUTAS. Si la pegas pegada al margen, deja de ser una fruta y se convierte en
+una sección nueva.
+
+**Después de pegar cualquier bloque, comprueba esto:**
+
+1. Mira la barra azul de abajo a la derecha de VS Code. Debe decir `Spaces: 2`.
+   Si dice otra cosa, haz clic ahí → *Indent Using Spaces* → **2**.
+2. Compara la primera línea que pegaste con la línea equivalente que ya existía
+   más arriba. **Tienen que empezar en la misma columna.**
+3. Si tu bloque quedó más a la izquierda: selecciónalo entero (clic en el número
+   de la primera línea, `Shift` + clic en el de la última) y pulsa **`Tab`** una
+   vez. Se desplaza todo de golpe.
+
+`Shift+Tab` lo desplaza en sentido contrario, y `Ctrl+Z` deshace. No hay forma de
+romper nada de manera irreversible.
+
+---
+
 ## Bloque 1 — Grafana ya tiene los datos conectados
 
 **Paso 6.** Abre `http://localhost:3000`. Usuario `admin`, contraseña `admin`.
@@ -308,19 +382,18 @@ traduce el exporter.
 > exporter dependen de su versión y de qué colectores tenga activos. Nunca los des
 > por sabidos:
 >
-> ```bash
-> curl -s http://localhost:9187/metrics | grep "^# HELP pg_stat_database_numbackends"
-> ```
+> La forma más simple: abre `http://localhost:9187/metrics` en el navegador y
+> busca `numbackends` con `Ctrl+F`.
 >
-> En PowerShell:
+> Desde **PowerShell**:
 >
 > ```powershell
-> (Invoke-WebRequest http://localhost:9187/metrics).Content -split "`n" |
->   Select-String "^# HELP pg_stat_database_numbackends"
+> (Invoke-WebRequest -UseBasicParsing http://localhost:9187/metrics).Content -split "`n" |
+>   Select-String "pg_stat_database_numbackends"
 > ```
 >
 > Si no devuelve nada, busca cuál sí existe con
-> `curl -s http://localhost:9187/metrics | grep "^# HELP pg_stat_database"` y usa
+> `numbackends` en `http://localhost:9187/metrics`, busca `pg_stat_database` y usa
 > ese nombre. Este gesto —preguntarle al `/metrics` en vez de confiar en la
 > memoria— es el que te va a ahorrar más tiempo en tu trabajo.
 

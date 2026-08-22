@@ -76,14 +76,27 @@ output {
 
 Por API REST, sin pasar por Kibana:
 
-```bash
+En **PowerShell**:
+
+```powershell
 # Listar índices y cuántos documentos tiene cada uno
-curl -s "localhost:9200/_cat/indices?v"
+Invoke-RestMethod "http://localhost:9200/_cat/indices?v"
 
 # Buscar documentos por campo
+Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_search?q=level:ERROR"
+Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_search?q=event:order_failed"
+```
+
+<details>
+<summary>Las mismas órdenes en Linux o Mac</summary>
+
+```bash
+curl -s "localhost:9200/_cat/indices?v"
 curl -s "localhost:9200/orderflow-logs-*/_search?q=level:ERROR&pretty"
 curl -s "localhost:9200/orderflow-logs-*/_search?q=event:order_failed&pretty"
 ```
+
+</details>
 
 En Kibana, la vía equivalente es **Discover** (`http://localhost:5601/app/discover`), sobre el index pattern `orderflow-logs-*` con time field `@timestamp`.
 

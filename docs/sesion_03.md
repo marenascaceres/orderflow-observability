@@ -42,7 +42,82 @@ docker compose ps
 
 > **Tu métrica de la Sesión 2 sigue ahí.** El `Counter` que escribiste en
 > `processor.py` es tuyo y nadie lo va a tocar. Compruébalo si quieres:
-> `curl -s http://localhost:8001/metrics | grep order_amount`
+> abre `http://localhost:8001/metrics` en el navegador y busca `order_amount`
+> con `Ctrl+F`.
+
+---
+
+## Dónde se escribe cada cosa
+
+Este manual mezcla varios sitios distintos. Antes de empezar, ten claro cuál es cuál:
+
+| Si el bloque empieza por… | Va en… |
+|---|---|
+| `docker`, `Invoke-WebRequest` | **PowerShell**, siempre desde la carpeta del repositorio |
+| `rate(`, `sum(`, `increase(`, `count(` | **El navegador**, en `http://localhost:9090` → pestaña **Graph** |
+| Texto con sangría (YAML, Python) | **VS Code**, en el archivo que se indique |
+| `http://localhost:...` a secas | **El navegador** |
+
+**Todos los comandos de Docker de este curso se escriben desde la carpeta del
+repositorio.** Tu PowerShell debe mostrar algo así antes del cursor:
+
+```
+PS D:\...\orderflow-observability>
+```
+
+Si no es así, colócate ahí antes de nada:
+
+```powershell
+cd C:\ruta\donde\clonaste\orderflow-observability
+```
+
+`docker compose` no adivina qué stack quieres manejar: busca el archivo
+`docker-compose.yml` **en la carpeta donde estás parado**. Desde otro sitio te
+dirá que no encuentra ninguna configuración.
+
+> **Y si un comando te responde «no se reconoce el término X»**, no está roto tu
+> ordenador: ese comando es de otro idioma. `head`, `tail`, `grep` y `wc` son de
+> Linux y Mac. En Windows PowerShell se dice así:
+>
+> | Quiero… | Linux / Mac | Windows PowerShell |
+> |---|---|---|
+> | Ver solo el principio | `head -20` | `Select-Object -First 20` |
+> | Ver solo el final | `tail -20` | `Select-Object -Last 20` |
+> | Buscar una palabra | `grep queue` | `Select-String queue` |
+> | Contar líneas | `wc -l` | `Measure-Object -Line` |
+
+---
+
+## Cómo pegar los bloques de código sin romperlos
+
+Varios pasos de hoy te piden pegar bloques largos. **Al copiarlos desde el
+documento de Word, los espacios del principio de cada línea se pierden.** Y esos
+espacios no son decoración: son lo único que indica qué pertenece a qué.
+
+Piensa en una lista de la compra:
+
+```
+FRUTAS:
+    manzanas
+    peras
+```
+
+Lo que hace que «manzanas» sea una fruta es que está **escrita más a la derecha**
+que FRUTAS. Si la pegas pegada al margen, deja de ser una fruta y se convierte en
+una sección nueva.
+
+**Después de pegar cualquier bloque, comprueba esto:**
+
+1. Mira la barra azul de abajo a la derecha de VS Code. Debe decir `Spaces: 2`.
+   Si dice otra cosa, haz clic ahí → *Indent Using Spaces* → **2**.
+2. Compara la primera línea que pegaste con la línea equivalente que ya existía
+   más arriba. **Tienen que empezar en la misma columna.**
+3. Si tu bloque quedó más a la izquierda: selecciónalo entero (clic en el número
+   de la primera línea, `Shift` + clic en el de la última) y pulsa **`Tab`** una
+   vez. Se desplaza todo de golpe.
+
+`Shift+Tab` lo desplaza en sentido contrario, y `Ctrl+Z` deshace. No hay forma de
+romper nada de manera irreversible.
 
 ---
 
@@ -231,11 +306,20 @@ están escuchando. No debe haber errores en rojo.
 
 Y la prueba definitiva, contra Elasticsearch:
 
+En **PowerShell**:
+
+```powershell
+Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count"
+```
+
+<details>
+<summary>La misma orden en Linux o Mac</summary>
+
 ```bash
 curl -s "http://localhost:9200/orderflow-logs-*/_count"
 ```
 
-En PowerShell: `Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count"`
+</details>
 
 **Qué debes ver:** un JSON con `"count"` mayor que cero, que **crece** si repites
 el comando pasados unos segundos.
@@ -327,10 +411,22 @@ respecto a las métricas, y correlacionar un incidente se vuelve imposible.
 
 ### Paso 12 — Comprobar que no hay fallos de parseo
 
+En **PowerShell**:
+
+```powershell
+Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:_grokparsefailure"
+Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:_dateparsefailure"
+```
+
+<details>
+<summary>La misma orden en Linux o Mac</summary>
+
 ```bash
 curl -s "http://localhost:9200/orderflow-logs-*/_count?q=tags:_grokparsefailure"
 curl -s "http://localhost:9200/orderflow-logs-*/_count?q=tags:_dateparsefailure"
 ```
+
+</details>
 
 **Qué debes ver:** `"count":0` en los dos.
 

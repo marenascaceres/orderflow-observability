@@ -158,8 +158,10 @@ porque no son nuestras: cada exporter usa el suyo.
 
 Para saber qué expone realmente un exporter, no lo adivines: pregúntaselo.
 
-```bash
-curl -s http://localhost:9187/metrics | grep "^# HELP"
+Abre `http://localhost:9187/metrics` en el navegador, o desde **PowerShell**:
+
+```powershell
+(Invoke-WebRequest -UseBasicParsing http://localhost:9187/metrics).Content -split "`n" | Select-String "^# HELP"
 ```
 
 ---
@@ -191,19 +193,28 @@ rate(orderflow_orders_processed_total[5m])
 Nunca confíes en la memoria ni en una diapositiva. El endpoint `/metrics` es la
 verdad:
 
-```bash
+La forma más simple, y la que funciona igual en cualquier equipo: abre
+`http://localhost:8001/metrics` en el navegador y busca con `Ctrl+F`.
+
+Desde **PowerShell**:
+
+```powershell
 # Todas las métricas de OrderFlow con su descripción
-curl -s http://localhost:8001/metrics | grep "^# HELP orderflow"
+(Invoke-WebRequest -UseBasicParsing http://localhost:8001/metrics).Content -split "`n" | Select-String "^# HELP orderflow"
 
 # ¿Existe esta métrica concreta?
+(Invoke-WebRequest -UseBasicParsing http://localhost:8001/metrics).Content -split "`n" | Select-String "queue_depth"
+```
+
+<details>
+<summary>Las mismas órdenes en Linux o Mac</summary>
+
+```bash
+curl -s http://localhost:8001/metrics | grep "^# HELP orderflow"
 curl -s http://localhost:8001/metrics | grep queue_depth
 ```
 
-En Windows PowerShell:
-
-```powershell
-(Invoke-WebRequest http://localhost:8001/metrics).Content -split "`n" | Select-String "^# HELP orderflow"
-```
+</details>
 
 Y dentro de la propia UI de Prometheus: al escribir en el campo de consulta, el
 autocompletado lista los nombres reales. Si el que buscas no aparece ahí, no existe.

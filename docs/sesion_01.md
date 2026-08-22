@@ -66,6 +66,47 @@ desaparecerá. **Todo lo que construyas sigue vivo hasta la última sesión.**
 
 ---
 
+## Dónde se escribe cada cosa
+
+Este manual mezcla varios sitios distintos. Antes de empezar, ten claro cuál es cuál:
+
+| Si el bloque empieza por… | Va en… |
+|---|---|
+| `docker`, `Invoke-WebRequest` | **PowerShell**, siempre desde la carpeta del repositorio |
+| `rate(`, `sum(`, `increase(`, `count(` | **El navegador**, en `http://localhost:9090` → pestaña **Graph** |
+| Texto con sangría (YAML, Python) | **VS Code**, en el archivo que se indique |
+| `http://localhost:...` a secas | **El navegador** |
+
+**Todos los comandos de Docker de este curso se escriben desde la carpeta del
+repositorio.** Tu PowerShell debe mostrar algo así antes del cursor:
+
+```
+PS D:\...\orderflow-observability>
+```
+
+Si no es así, colócate ahí antes de nada:
+
+```powershell
+cd C:\ruta\donde\clonaste\orderflow-observability
+```
+
+`docker compose` no adivina qué stack quieres manejar: busca el archivo
+`docker-compose.yml` **en la carpeta donde estás parado**. Desde otro sitio te
+dirá que no encuentra ninguna configuración.
+
+> **Y si un comando te responde «no se reconoce el término X»**, no está roto tu
+> ordenador: ese comando es de otro idioma. `head`, `tail`, `grep` y `wc` son de
+> Linux y Mac. En Windows PowerShell se dice así:
+>
+> | Quiero… | Linux / Mac | Windows PowerShell |
+> |---|---|---|
+> | Ver solo el principio | `head -20` | `Select-Object -First 20` |
+> | Ver solo el final | `tail -20` | `Select-Object -Last 20` |
+> | Buscar una palabra | `grep queue` | `Select-String queue` |
+> | Contar líneas | `wc -l` | `Measure-Object -Line` |
+
+---
+
 ## Bloque 1 — Verificación rápida
 
 ### Paso 1 — Levantar el stack
