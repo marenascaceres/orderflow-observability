@@ -40,6 +40,11 @@ docker compose ps
 
 **Qué debes ver:** 13 filas, todas `Up` o `healthy`.
 
+> **Cómo copiar los comandos de este manual.** Los bloques de varias líneas se
+> pegan **enteros de una vez**, no línea a línea. Si al pegar aparece un `>>` y la
+> consola se queda esperando, es que el comando quedó a medias: pulsa `Ctrl+C` y
+> vuelve a pegarlo completo.
+
 > **Tu métrica de la Sesión 2 sigue ahí.** El `Counter` que escribiste en
 > `processor.py` es tuyo y nadie lo va a tocar. Compruébalo si quieres:
 > abre `http://localhost:8001/metrics` en el navegador y busca `order_amount`
@@ -130,7 +135,7 @@ docker compose logs order-processor --tail 3
 ```
 
 ```json
-{"timestamp":"2026-08-12 03:12:15,842","level":"INFO","service":"processor","message":"Order processed","event":"order_processed","order_id":"8c4a2f9b","region":"lima","total_amount":127.5}
+{"timestamp":"2026-08-12 03:12:15,842","level":"INFO","service":"processor","message":"Order processed","event":"order_processed","order_id":"2a008396-53f6-4ac2-9eee-6d193f9c33cb","region":"lima","total_amount":127.5}
 ```
 
 Ahora el otro:
@@ -149,6 +154,13 @@ campos están *escondidos*.
 
 Con el primero puedes preguntar "dame las órdenes de Lima de más de 500 soles".
 Con el segundo no puedes preguntar nada: solo buscar texto.
+
+> **Fíjate en los dos identificadores: no son iguales.** El processor escribe el
+> UUID completo (`2a008396-53f6-4ac2-9eee-6d193f9c33cb`) y el generator solo sus
+> ocho primeros caracteres (`id=2a008396`). Por eso el campo que extraerás con
+> grok se llamará `order_id_short`: **no se pueden cruzar los dos orígenes con una
+> búsqueda de `order_id` a secas**. Para seguir una orden por los dos flujos hay
+> que buscar por el prefijo.
 
 ### Paso 2 — Por qué el generator no se arregla en el código
 
@@ -207,28 +219,41 @@ Pega esto justo debajo:
     # --- SESION 3: enrutar los logs de texto plano hacia Logstash ---
     # El driver de logging de Docker corre a nivel del daemon (dockerd),
     # NO dentro de la red del contenedor. Por eso NO resuelve nombres de
-    # servicio de Compose como "logstash". Como dockerd y el puerto
-    # publicado de Logstash conviven en la misma maquina (o en la VM de
-    # Docker Desktop), "localhost" si funciona.
+    # servicio de Compose como "logstash". Se usa la direccion numerica
+    # 127.0.0.1, no el nombre "localhost": ver la nota de abajo.
     logging:
       driver: syslog
       options:
-        syslog-address: "udp://localhost:${LOGSTASH_SYSLOG_PORT:-5000}"
+        syslog-address: "udp://127.0.0.1:${LOGSTASH_SYSLOG_PORT:-5000}"
         tag: "order-generator"
 ```
 
 Con eso, **Docker intercepta todo lo que el contenedor escribe** en su salida
 estándar y lo reenvía por syslog.
 
-> **La línea que confunde a todo el mundo: ¿por qué `localhost` y no `logstash`?**
+> **La línea que confunde a todo el mundo: ¿por qué no `logstash`?**
 >
 > Porque el driver de logging **no corre dentro del contenedor**: corre en el
 > demonio de Docker, fuera de la red de Compose. Ahí `logstash` no significa nada,
 > porque el DNS interno de Compose no existe. Pero el puerto 5000 está publicado
-> en la máquina, y el demonio sí lo alcanza por `localhost`.
+> en la máquina, y el demonio sí lo alcanza por su dirección local.
+
+> **Y la segunda pregunta: ¿por qué `127.0.0.1` y no `localhost`?**
 >
-> Es de los errores más difíciles de diagnosticar cuando se hace mal, porque no
-> da ningún mensaje: los logs simplemente no llegan.
+> Porque **`localhost` no funciona aquí**, y falla de la peor manera posible: sin
+> decir nada.
+>
+> Dentro de la máquina virtual de Docker, el nombre `localhost` está asociado a
+> **dos** direcciones: `127.0.0.1` (IPv4) y `::1` (IPv6). Es como un contacto con
+> dos números de teléfono. El driver, escrito en Go, prefiere el moderno y marca
+> `::1`. Pero Logstash escucha en `0.0.0.0:5000`, que es **solo IPv4**: nadie
+> contesta en ese número.
+>
+> Y como syslog viaja por **UDP**, el mensaje se pierde sin acuse de recibo. Ni un
+> error, ni un aviso, ni una línea en ningún log. Solo un contador que no sube.
+>
+> Escribiendo la dirección numérica no hay nada que traducir, y no hay ambigüedad
+> posible.
 
 ### Paso 5 — Declarar el puerto en tu `.env`
 
@@ -244,6 +269,20 @@ LOGSTASH_SYSLOG_PORT=5000
 > Aunque el `docker-compose.yml` ya trae `:-5000` como valor por defecto, es buena
 > costumbre declararla: quien lea el `.env` verá todos los puertos del stack en un
 > solo sitio.
+
+**Comprueba que se guardó.** No sigas sin hacerlo:
+
+```powershell
+Select-String "LOGSTASH_SYSLOG_PORT" .env
+```
+
+Tiene que devolverte la línea. Si no devuelve nada, el editor no guardó el archivo:
+pulsa `Ctrl+S` y repite.
+
+> **Por qué insistimos en esto.** Un archivo editado y sin guardar no falla donde lo
+> editaste: falla tres pasos más adelante, cuando ya no lo relacionas con esta
+> edición y te pones a buscar el problema en otro sitio. Haz esta comprobación
+> después de **cada** cambio de archivo de la sesión.
 
 ### Paso 6 — Instalar el pipeline de Logstash
 
@@ -265,13 +304,37 @@ cp ~/Downloads/orderflow.conf logstash/pipeline/orderflow.conf
 
 Ajusta la ruta de origen si lo descargaste a otra carpeta.
 
-Comprueba que se copió bien:
+> **Windows en español:** el Explorador muestra la carpeta como «Descargas», pero
+> su nombre real en disco sigue siendo `Downloads`. Ese «Descargas» es solo una
+> etiqueta que Windows enseña. Si escribes `$HOME\Descargas` obtendrás un error de
+> ruta inexistente.
+
+**Comprueba que se copió el archivo correcto:**
+
+```powershell
+Select-String "syslog" .\logstash\pipeline\orderflow.conf
+```
+
+**Qué debes ver:** varias líneas mencionando `syslog`. Si no aparece ninguna, sigues
+teniendo el pipeline de la Sesión 1 y la copia no se hizo.
+
+Y comprueba que tus ediciones del YAML son válidas:
 
 ```bash
 docker compose config --services
 ```
 
 **Qué debes ver:** los 13 nombres de siempre, sin errores de sintaxis.
+
+> **Cuidado con lo que comprueba cada cosa.** `docker compose config` lee
+> **únicamente** el `docker-compose.yml`: valida los cambios que hiciste en los
+> pasos 3 y 4. **No abre el pipeline de Logstash**, así que da exactamente la misma
+> salida aunque el `.conf` esté mal copiado o incluso borrado. Por eso hacen falta
+> las dos comprobaciones, y no una.
+>
+> No verifiques la copia contando líneas: el número depende del comando que uses
+> (`Measure-Object -Line` no cuenta las líneas en blanco, y este archivo tiene
+> catorce). Comprobar que el contenido es el esperado es más fiable que contar.
 
 ### Paso 7 — Aplicar los cambios
 
@@ -295,34 +358,86 @@ docker compose ps
 
 **Qué debes ver:** 13 filas.
 
+> **A partir de ahora, `docker compose logs order-generator` no devuelve nada.**
+> Y es lo correcto, no un fallo. Con el driver `syslog`, Docker ya no guarda una
+> copia local de los logs: los reenvía y se desentiende. El comando responde vacío,
+> sin error y con código de salida 0.
+>
+> El generator sigue perfectamente vivo. Si quieres comprobarlo, míralo por otro
+> lado — sus métricas, que no pasan por los logs:
+>
+> ```powershell
+> (Invoke-WebRequest "http://localhost:8000/metrics" -UseBasicParsing).Content -split "`n" | Select-String "^orderflow_orders_generated_total"
+> ```
+>
+> A partir de hoy, el generator se observa desde Kibana o desde sus métricas. Es el
+> precio de haber redirigido sus logs, y conviene saberlo antes de necesitarlo.
+
 ### Paso 8 — Verificar que los dos flujos llegan
+
+**Primero, que Logstash haya arrancado del todo.** Tarda cerca de un minuto: por
+dentro levanta una máquina virtual de Java. Espera y luego mira:
 
 ```bash
 docker compose logs logstash --tail 30
 ```
 
-**Qué debes ver:** líneas indicando que el pipeline arrancó y que los inputs
-están escuchando. No debe haber errores en rojo.
+**Qué debes ver**, y esto es lo que confirma que tu `.conf` funciona:
 
-Y la prueba definitiva, contra Elasticsearch:
+```
+Starting syslog udp listener {:address=>"0.0.0.0:5000"}
+Starting syslog tcp listener {:address=>"0.0.0.0:5000"}
+Starting tcp input listener  {:address=>"0.0.0.0:5044"}
+Pipeline started
+```
+
+Tres puertas abiertas: la de siempre (5044) y **dos nuevas** en el 5000. Escribiste
+un solo puerto y el plugin syslog abrió TCP y UDP por su cuenta.
+
+> **Dos avisos amarillos que son normales** y aparecen en todos los arranques:
+> `Restored connection to ES instance` (Logstash arranca antes que Elasticsearch,
+> reintenta y lo encuentra: no se cayó nada) y `Detected a 6.x and above cluster`
+> (aviso de compatibilidad hacia atrás). Ninguno de los dos es un problema.
+
+> **No midas nada hasta ver esas líneas.** Mientras Logstash arranca, el puerto 5000
+> todavía no existe, y todo lo que el generator envíe en ese rato **se pierde**: UDP
+> no encola ni reintenta. Si mides demasiado pronto verás cero y parecerá que algo
+> está mal.
+
+**Ahora la prueba contra Elasticsearch.** Y no basta con contar el total: a ese
+índice llegan **dos** flujos, así que hay que comprobarlos **por separado**. Si uno
+está mudo y el otro trabaja, el total sube igual y no te enteras.
 
 En **PowerShell**:
 
 ```powershell
-Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count"
+Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:processor"
+Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:generator"
 ```
 
 <details>
 <summary>La misma orden en Linux o Mac</summary>
 
 ```bash
-curl -s "http://localhost:9200/orderflow-logs-*/_count"
+curl -s "http://localhost:9200/orderflow-logs-*/_count?q=tags:processor"
+curl -s "http://localhost:9200/orderflow-logs-*/_count?q=tags:generator"
 ```
 
 </details>
 
-**Qué debes ver:** un JSON con `"count"` mayor que cero, que **crece** si repites
-el comando pasados unos segundos.
+**Qué debes ver:** los dos con `count` mayor que cero. Pero un número aislado no
+prueba nada — puede ser histórico. Lo que importa es que **crezca**:
+
+```powershell
+$a = (Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:generator").count; Start-Sleep -Seconds 30; $b = (Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:generator").count; "generator: $a -> $b   (diferencia: $($b - $a))"
+```
+
+**Qué debes ver:** una diferencia de unos **30**. El generator produce una orden por
+segundo, así que en treinta segundos deben entrar treinta documentos.
+
+> **Si la diferencia es 0**, los logs no están llegando. Repasa en este orden: que
+> Logstash haya terminado de arrancar (arriba), que el Paso 4 diga `127.0.0.1` y no
+> `localhost`, y que el Paso 5 esté guardado en el `.env`.
 
 ---
 
@@ -349,6 +464,26 @@ syslog {
 `json_lines` es el códec que entiende el formato del processor: un JSON completo
 por línea. Y `tags` marca el origen de cada evento — eso es lo que permite
 procesar cada flujo por separado más abajo.
+
+El input `syslog` lleva además una tercera línea:
+
+```ruby
+grok_pattern => "<%{POSINT:priority}>%{SYSLOGTIMESTAMP:timestamp} %{SYSLOGPROG}: %{GREEDYDATA:message}"
+```
+
+> **Por qué hace falta.** El formato syslog estándar exige cinco piezas: prioridad,
+> fecha, **nombre de la máquina**, programa y mensaje. El driver de Docker emite
+> solo cuatro: **se salta el nombre de la máquina**. Logstash, que espera la
+> plantilla completa, no encuentra encaje y guarda el mensaje entero sin procesar.
+>
+> Las consecuencias son llamativas: la prioridad se queda en 0, que significa
+> «emergencia del kernel», y **todos tus logs de negocio aparecen catalogados como
+> la máxima urgencia del sistema operativo**. Además el sobre —ese `<30>Aug 31
+> 04:22:24 order-generator[111]:` del principio— se queda pegado dentro del mensaje.
+>
+> Esta línea le dice a Logstash cuál es el formato que Docker manda **de verdad**.
+> Con ella, la prioridad se lee bien (`Informational`, no `Emergency`), el sobre se
+> descarta y aparecen dos campos nuevos: `program` y `pid`.
 
 ### Paso 10 — Qué hace grok
 
@@ -411,11 +546,12 @@ respecto a las métricas, y correlacionar un incidente se vuelve imposible.
 
 ### Paso 12 — Comprobar que no hay fallos de parseo
 
-En **PowerShell**:
+Son **tres** etiquetas, no dos. En **PowerShell**:
 
 ```powershell
-Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:_grokparsefailure"
-Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:_dateparsefailure"
+"grok filtro :"; (Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:_grokparsefailure").count
+"grok syslog :"; (Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:_grokparsefailure_sysloginput").count
+"fecha       :"; (Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:_dateparsefailure").count
 ```
 
 <details>
@@ -423,15 +559,38 @@ Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:_datepar
 
 ```bash
 curl -s "http://localhost:9200/orderflow-logs-*/_count?q=tags:_grokparsefailure"
+curl -s "http://localhost:9200/orderflow-logs-*/_count?q=tags:_grokparsefailure_sysloginput"
 curl -s "http://localhost:9200/orderflow-logs-*/_count?q=tags:_dateparsefailure"
 ```
 
 </details>
 
-**Qué debes ver:** `"count":0` en los dos.
+**Qué debes ver:** `0` en las tres.
 
-Si alguno da un número mayor que cero, algo no está parseando. Es exactamente el
-tipo de comprobación que hay que hacer en un pipeline real y que casi nadie hace.
+> **Las dos primeras se parecen pero no son la misma.** `_grokparsefailure` la pone
+> el **filtro** grok, el del Paso 10. `_grokparsefailure_sysloginput` la pone la
+> **puerta de entrada** syslog, que hace su propio parseo antes de que el filtro
+> exista. Son dos sitios distintos y cada uno firma con su nombre.
+>
+> Si preguntas solo por la primera, puedes obtener un tranquilizador `0` mientras
+> **todos** los eventos del generator están fallando en la segunda. Buscar «Pérez»
+> no encuentra al fichado como «Pérez-Gómez».
+
+**Y ahora lo más importante del paso: abre un documento y míralo por dentro.**
+
+```powershell
+(Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_search?q=tags:generator&size=1&sort=@timestamp:desc").hits.hits._source | ConvertTo-Json -Depth 4
+```
+
+**Qué debes ver:** `severity_label` en `Informational` (no `Emergency`),
+`facility_label` en `system` (no `kernel`), el `message` limpio y sin la cabecera
+`<30>...` pegada delante, y los campos `region`, `items_count` y `total_amount` que
+fabricó grok.
+
+> **Por qué este paso vale más que los contadores.** Un contador a cero no demuestra
+> que todo esté bien: demuestra que **no encontró lo que estaba buscando**. Y a veces
+> no lo encontró porque preguntaba por el nombre equivocado. Mirar un documento real
+> es la única comprobación que no se puede engañar a sí misma. Hazlo siempre.
 
 ---
 
@@ -507,13 +666,18 @@ Todo lo que no sea informativo, en una región concreta.
 1. En **Prometheus** (`localhost:9090`), ejecuta:
 
    ```promql
-   increase(orderflow_orders_failed_total[15m])
+   increase(orderflow_orders_failed_total[1h])
    ```
 
    Anota **qué causa** tiene el valor más alto.
 
-2. En **Kibana**, con el rango de tiempo en los últimos 15 minutos, busca esa
-   misma causa:
+   > **Saldrán decimales**, del tipo `49.7`. ¿Cómo van a fallar 49,7 órdenes? No
+   > fallaron: Prometheus **no cuenta, estima**. Toma la primera y la última medida
+   > de la ventana y calcula la pendiente entre ellas. Es un cálculo estadístico,
+   > no un recuento.
+
+2. En **Kibana**, con el rango de tiempo en **la última hora**, busca esa misma
+   causa:
 
    ```
    event: "order_failed" and reason: "TU_CAUSA_AQUI"
@@ -521,6 +685,21 @@ Todo lo que no sea informativo, en una región concreta.
 
 3. Abre uno de los documentos (flecha a la izquierda de la fila) y localiza el
    `order_id` concreto.
+
+> **Compara la causa dominante, no la lista entera.** Prometheus estima pendientes
+> y los logs cuentan documentos: son dos formas distintas de medir, y sus números
+> **no van a coincidir**, ni falta que hace. En ventanas cortas, además, el orden de
+> las causas menos frecuentes cambia solo de una medición a otra: con veinte sucesos,
+> una diferencia de dos es azar.
+>
+> Lo que importa es que la causa **más frecuente** sea la misma en los dos sitios.
+> Eso demuestra que las dos herramientas ven la misma realidad. Que los números
+> difieran demuestra que la miden de forma distinta, que es exactamente lo que
+> tienen que hacer.
+
+> **Y si comparas cantidades entre sí, mídelas en la misma consulta.** Varias
+> consultas seguidas son fotos de instantes distintos: restarlas entre sí no
+> significa nada, porque la ventana `now-1h` se ha desplazado entre una y otra.
 
 Acabas de recorrer el camino completo: **la métrica te dijo que había un problema
 y cuál era el más frecuente; el log te dijo exactamente qué orden lo sufrió y
@@ -530,35 +709,72 @@ cuándo.** Ninguna de las dos herramientas podía darte eso sola.
 
 ## Ejercicios (haz estos tú solo)
 
-### Ejercicio A — La región problemática
+### Ejercicio A — ¿Hay alguna región que destaque?
 
-Usando Kibana, averigua **qué región tiene más órdenes fallidas** en la última
-hora.
+Usando Kibana, averigua **qué región genera más órdenes** en la última hora, y
+**cuál tiene el ticket medio más alto**. Después responde: ¿hay alguna que se salga
+de lo normal, o están todas equilibradas? Justifica la respuesta.
 
-*Pista: filtra por `event: "order_failed"`, luego busca el campo `region` en el
-panel izquierdo y pulsa **Visualize**.*
+*Pista: filtra por `tags: "generator"`, busca el campo `region` en el panel
+izquierdo y pulsa **Visualize**. Para el ticket medio, cambia la métrica de
+«Count» a «Average» sobre `total_amount`.*
+
+> **Una advertencia que te ahorrará tiempo.** Podrías pensar en resolverlo sobre
+> los eventos `order_failed`. No se puede: **esos eventos no tienen campo `region`**.
+> El processor recibe la orden desde la cola y solo maneja su identificador; la
+> región la conoce quien la creó, que es el generator. Comprobarlo es fácil y es
+> buena costumbre antes de dar nada por hecho:
+>
+> ```powershell
+> Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=event:order_failed%20AND%20_exists_:region"
+> ```
+>
+> Ese `_exists_` pregunta si el campo existe en el documento. Devuelve 0.
+
+> **Fíjate en lo que estás consultando.** El campo `region` **no venía** en los logs
+> del generator: era una tira de texto. Lo creaste tú con grok hace veinte minutos.
+> Estás haciendo análisis de negocio sobre unos logs que nacieron sin saber lo que
+> era una región.
 
 ### Ejercicio B — Generadas contra procesadas
 
-Escribe dos consultas KQL, una que cuente los eventos `order_generated` y otra
-los `order_processed`, en la misma ventana de tiempo. Anota los dos números.
+Con el rango de tiempo en **los últimos 5 minutos**, escribe **tres** consultas KQL
+y anota los tres números: `event: "order_generated"`, `event: "order_processed"` y
+`event: "order_failed"`.
 
-¿Coinciden? Explica en dos líneas a qué se debe la diferencia.
+Después responde: ¿cuadra la cuenta? Explica en dos líneas dónde está la diferencia.
 
-### Ejercicio C — Un campo nuevo con grok
+> **Por qué cinco minutos y no «la última hora».** Los dos flujos no llevan el mismo
+> tiempo funcionando: el processor manda logs desde la Sesión 1 y el generator desde
+> hace un rato, cuando abriste el camino syslog. En ventanas largas los números no
+> son comparables y la conclusión sale disparatada. Elige siempre una ventana en la
+> que las dos cosas que comparas hayan estado activas por igual.
 
-El generator emite un campo que **no** estamos extrayendo: el nivel de log
-(`INFO`, `WARNING`, `ERROR`) del texto original.
+> **Y por qué hacen falta las tres consultas.** Con solo dos, la cuenta parece no
+> cuadrar y es fácil concluir «se pierden órdenes», que es falso. Una orden que falla
+> **no desaparece**: quedó registrada como fallida. Súmalas antes de comparar.
 
-Propón (solo escríbelo, no hace falta que lo apliques) el patrón grok que
-extraería la marca de tiempo y el nivel del principio de la línea:
+### Ejercicio C — Mejorar una extracción que ya existe
+
+Abre el pipeline y busca cómo se obtiene el campo `level` de los logs del generator.
+Verás que **no** se usa grok, sino tres condicionales que buscan la palabra suelta
+dentro del texto, con un `else` que asigna `INFO` a todo lo demás.
+
+Ese código tiene dos defectos y deja un dato sin aprovechar. Encuéntralos y propón
+(solo escríbelo, no hace falta aplicarlo) el bloque que lo sustituiría, usando grok
+sobre el principio de la línea:
 
 ```
 2026-08-12 03:12:15,481 INFO - Order generated: ...
 ```
 
-*Pista: existe un patrón predefinido llamado `TIMESTAMP_ISO8601` y otro llamado
-`LOGLEVEL`.*
+*Pistas: existe un patrón predefinido llamado `TIMESTAMP_ISO8601` y otro llamado
+`LOGLEVEL`. El símbolo `^` ancla un patrón al inicio de la línea. Y compara el
+`@timestamp` de un documento con la hora que aparece dentro de su `message`:
+fíjate en los milisegundos.*
+
+> **Una pista más para el segundo defecto.** Pregúntate qué le pasaría a un log de
+> nivel `CRITICAL` con el código actual. ¿Se vería? ¿Cómo se guardaría?
 
 ---
 
@@ -566,15 +782,22 @@ extraería la marca de tiempo y el nivel del principio de la línea:
 
 | Síntoma | Causa probable | Solución |
 |---|---|---|
+| Cualquier comando `docker` falla mencionando `dockerDesktopLinuxEngine` | Docker Desktop no está en marcha | Ábrelo y espera a que la ballena deje de moverse. El comando no tiene nada de malo |
+| El contador del generator no sube | El Paso 4 dice `localhost` en vez de `127.0.0.1` | Corrígelo y **recrea**: `docker compose up -d --force-recreate order-generator` |
+| El contador del generator no sube, y el Paso 4 está bien | Logstash todavía está arrancando | Espera a ver `Starting syslog udp listener` en sus logs y vuelve a medir |
 | No entran logs del generator | El driver de logging no se aplicó | `docker compose up -d --force-recreate order-generator` |
+| `docker compose logs order-generator` no devuelve nada | **Es lo esperado** desde el Paso 7 | Comprueba el generator en Kibana o en `localhost:8000/metrics` |
 | Logstash no arranca | Error de sintaxis en el `.conf` | `docker compose logs logstash --tail 40` |
 | `docker compose config` da error | La indentación del bloque `logging:` | Va con **4 espacios**, al mismo nivel que `depends_on:` |
 | El puerto 5000 no aparece en `docker compose ps` | Falta el `/udp` al final | Revisa el Paso 3 |
 | `_count` de Elasticsearch da 0 | Logstash aún no arrancó | Espera 60 s; Logstash tarda |
-| Aparece `_grokparsefailure` | El patrón no casa con el texto | Compara el patrón con una línea real |
+| Aparece `_grokparsefailure` | El patrón del filtro no casa con el texto | Compara el patrón con una línea real |
+| Aparece `_grokparsefailure_sysloginput` | Falta el `grok_pattern` en el input syslog | Revisa el Paso 9: Docker emite syslog sin nombre de máquina |
 | Aparece `_dateparsefailure` | Formato de fecha no contemplado | Revisa el bloque `date` del Paso 11 |
 | Discover vacío pero `_count` > 0 | Rango de tiempo o Data View | "Last 15 minutes" + Refresh |
 | Los logs salen desfasados unos segundos | El filtro `date` no está parseando | Comprueba `_dateparsefailure` |
+| Un cambio en un archivo no surte efecto | El editor no lo guardó | `Select-String "loQueAñadiste" elArchivo`. Si no devuelve nada, falta `Ctrl+S` |
+| Al pegar un comando aparece `>>` y no pasa nada | El bloque se pegó a medias | `Ctrl+C` y pégalo entero de una vez |
 
 ---
 
