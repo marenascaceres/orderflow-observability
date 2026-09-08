@@ -40,10 +40,9 @@ docker compose ps
 
 **Qué debes ver:** 13 filas, todas `Up` o `healthy`.
 
-> **Cómo copiar los comandos de este manual.** Los bloques de varias líneas se
-> pegan **enteros de una vez**, no línea a línea. Si al pegar aparece un `>>` y la
-> consola se queda esperando, es que el comando quedó a medias: pulsa `Ctrl+C` y
-> vuelve a pegarlo completo.
+> **Usa Windows Terminal**, el de las pestañas, no la consola azul clásica. Ésta
+> procesa las líneas según le llegan y puede desordenar un bloque pegado de
+> varias. Si aparece un `>>` esperando, pulsa `Ctrl+C` y vuelve a pegar.
 
 > **Tu métrica de la Sesión 2 sigue ahí.** El `Counter` que escribiste en
 > `processor.py` es tuyo y nadie lo va a tocar. Compruébalo si quieres:
@@ -411,8 +410,7 @@ está mudo y el otro trabaja, el total sube igual y no te enteras.
 En **PowerShell**:
 
 ```powershell
-Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:processor"
-Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:generator"
+"processor:"; (Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:processor").count; "generator:"; (Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:generator").count
 ```
 
 <details>
@@ -549,9 +547,7 @@ respecto a las métricas, y correlacionar un incidente se vuelve imposible.
 Son **tres** etiquetas, no dos. En **PowerShell**:
 
 ```powershell
-"grok filtro :"; (Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:_grokparsefailure").count
-"grok syslog :"; (Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:_grokparsefailure_sysloginput").count
-"fecha       :"; (Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:_dateparsefailure").count
+foreach ($t in "_grokparsefailure","_grokparsefailure_sysloginput","_dateparsefailure") { "$t : $((Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:$t").count)" }
 ```
 
 <details>

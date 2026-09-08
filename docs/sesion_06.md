@@ -29,6 +29,10 @@ Al terminar serás capaz de:
 
 ---
 
+> **Usa Windows Terminal**, el de las pestañas, no la consola azul clásica. Ésta
+> procesa las líneas según le llegan y puede desordenar un bloque pegado de
+> varias. Si aparece un `>>` esperando, pulsa `Ctrl+C` y vuelve a pegar.
+
 ## Punto de partida
 
 Necesitas los **cinco archivos** que descargaste de la plataforma: los cuatro
@@ -39,8 +43,7 @@ cinco archivos:
 
 **Windows (PowerShell):**
 ```powershell
-New-Item -ItemType Directory -Force -Path notebooks
-Copy-Item "$HOME\Downloads\*.ipynb","$HOME\Downloads\requirements.txt" notebooks\
+New-Item -ItemType Directory -Force -Path notebooks | Out-Null; Copy-Item "$HOME\Downloads\*.ipynb","$HOME\Downloads\requirements.txt" notebooks\
 ```
 
 **Mac/Linux:**

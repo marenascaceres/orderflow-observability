@@ -194,9 +194,21 @@ dirá que no encuentra ninguna configuración.
 
 ## Cómo pegar los bloques de código sin romperlos
 
-Varios pasos de hoy te piden pegar bloques largos. **Al copiarlos desde el
-documento de Word, los espacios del principio de cada línea se pierden.** Y esos
-espacios no son decoración: son lo único que indica qué pertenece a qué.
+Hay **dos** problemas distintos al pegar, y conviene no confundirlos: uno ocurre
+en la terminal y el otro en el editor.
+
+### En la terminal: las líneas se desordenan
+
+> **Usa Windows Terminal**, el de las pestañas, no la consola azul clásica. Ésta
+> procesa las líneas según le llegan y puede desordenar un bloque pegado de
+> varias. Si aparece un `>>` esperando, pulsa `Ctrl+C` y vuelve a pegar.
+
+### En el editor: se pierde la sangría
+
+Varios pasos de hoy te piden pegar bloques largos en archivos. **Al copiarlos
+desde el documento de Word, los espacios del principio de cada línea se
+pierden.** Y esos espacios no son decoración: son lo único que indica qué
+pertenece a qué.
 
 Piensa en una lista de la compra:
 

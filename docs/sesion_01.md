@@ -77,6 +77,18 @@ Este manual mezcla varios sitios distintos. Antes de empezar, ten claro cuál es
 | Texto con sangría (YAML, Python) | **VS Code**, en el archivo que se indique |
 | `http://localhost:...` a secas | **El navegador** |
 
+
+> **Qué terminal usar, y por qué importa.** Abre **Windows Terminal** — el que
+> trae Windows 11, con pestañas; búscalo en el menú Inicio como «Terminal».
+>
+> La consola clásica de PowerShell, la ventana azul de toda la vida, va
+> procesando las líneas **según le llegan**. Si pegas un bloque de varias, puede
+> ejecutarlas desordenadas o quedarse esperando con un `>>`. No es culpa tuya, y
+> lo peor es que no siempre se nota. Si te pasa: `Ctrl+C` y vuelve a pegar.
+>
+> Por esa razón, en este curso los comandos van **en una sola línea** siempre
+> que es posible, aunque queden largos.
+
 **Todos los comandos de Docker de este curso se escriben desde la carpeta del
 repositorio.** Tu PowerShell debe mostrar algo así antes del cursor:
 

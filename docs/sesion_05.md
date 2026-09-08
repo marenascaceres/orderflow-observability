@@ -30,6 +30,10 @@ Al terminar serás capaz de:
 
 ---
 
+> **Usa Windows Terminal**, el de las pestañas, no la consola azul clásica. Ésta
+> procesa las líneas según le llegan y puede desordenar un bloque pegado de
+> varias. Si aparece un `>>` esperando, pulsa `Ctrl+C` y vuelve a pegar.
+
 ## Punto de partida
 
 Necesitas dos cosas:
@@ -48,8 +52,7 @@ Crea su carpeta y copia dentro los tres archivos:
 
 **Windows (PowerShell):**
 ```powershell
-New-Item -ItemType Directory -Force -Path services\webhook-receiver
-Copy-Item "$HOME\Downloads\app.py","$HOME\Downloads\Dockerfile","$HOME\Downloads\requirements.txt" services\webhook-receiver\
+New-Item -ItemType Directory -Force -Path services\webhook-receiver | Out-Null; Copy-Item "$HOME\Downloads\app.py","$HOME\Downloads\Dockerfile","$HOME\Downloads\requirements.txt" services\webhook-receiver\
 ```
 
 **Mac/Linux:**
@@ -71,8 +74,7 @@ escribir la misma alerta.
 
 **Windows (PowerShell):**
 ```powershell
-New-Item -ItemType Directory -Force -Path grafana\provisioning\alerting
-Copy-Item "$HOME\Downloads\orderflow-alerts.yml" grafana\provisioning\alerting\
+New-Item -ItemType Directory -Force -Path grafana\provisioning\alerting | Out-Null; Copy-Item "$HOME\Downloads\orderflow-alerts.yml" grafana\provisioning\alerting\
 ```
 
 **Mac/Linux:**
@@ -765,8 +767,7 @@ la regla `SinOrdenesProcesadas`:
 Después recárgala y compruébala provocando el atasco:
 
 ```powershell
-Invoke-RestMethod -Method Post http://localhost:9090/-/reload
-docker compose stop order-processor
+Invoke-RestMethod -Method Post http://localhost:9090/-/reload; docker compose stop order-processor
 ```
 
 Espera y observa `http://localhost:9090/alerts`.
