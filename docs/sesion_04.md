@@ -369,11 +369,10 @@ romper nada de manera irreversible.
 >   `admin`.
 > - Cambiarla — y entonces **anótala**.
 >
-> **Si la cambias, apúntala en algún sitio.** No es solo para entrar a la web: la
-> vas a necesitar hoy mismo en el validador del Paso 24, y en la **Sesión 6**, donde
-> vas a consultar Grafana desde Python. Un `401 Unauthorized` dentro de un notebook
-> es de las cosas más difíciles de relacionar con un clic que diste dos semanas
-> antes.
+> **Si la cambias, apúntala en algún sitio.** No es solo para entrar a la web: hace
+> falta para **el validador del Paso 24** y para cualquier cosa que hable con Grafana
+> sin pasar por el navegador. Un error de autenticación en un comando, tres horas
+> después, es difícil de relacionar con un clic que diste al entrar.
 >
 > **Si te quedaste sin ella**, se restablece sin perder nada —ni dashboards ni
 > datasources:

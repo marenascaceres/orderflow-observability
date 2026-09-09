@@ -43,6 +43,27 @@ Necesitas dos cosas:
 2. Los **cuatro archivos** que descargaste de la plataforma: `app.py`,
    `Dockerfile`, `requirements.txt` y `orderflow-alerts.yml`.
 
+**Y una cosa más, que hoy es imprescindible:** el `uid` fijo que pusiste a los
+datasources en el Paso 2 de la Sesión 4. Compruébalo antes de empezar:
+
+```powershell
+Select-String "uid:" .\grafana\provisioning\datasources\datasources.yml
+```
+
+Tienen que salir `uid: prometheus` y `uid: elasticsearch`.
+
+> **Por qué hoy importa más que nunca.** Las alertas que vas a instalar dicen de dónde
+> leer con esa misma palabra:
+>
+> ```yaml
+> datasourceUid: prometheus
+> ```
+>
+> Si tu Grafana tiene un identificador generado al azar, las reglas no encontrarán
+> ningún origen de datos y **no evaluarán nada**. No dará error al arrancar: las
+> alertas simplemente no saltarán nunca, que es la peor forma posible de que falle una
+> alerta.
+
 ### Paso 1 — Crear el microservicio que recibe las alertas
 
 El `webhook-receiver` es un servicio Flask de 80 líneas. Te lo damos hecho: hoy
