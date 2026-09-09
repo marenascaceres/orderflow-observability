@@ -103,8 +103,7 @@ Tres causas comunes:
 2. **Rango de tiempo incorrecto.** Arriba a la derecha, ajusta a "Last 15 minutes".
 3. **Logstash aún no ingesta.** Verifica:
    ```powershell
-   docker compose logs logstash --tail 20
-   (Invoke-WebRequest -UseBasicParsing "http://localhost:9200/_cat/indices").Content -split "`n" | Select-String orderflow
+   docker compose logs logstash --tail 20; (Invoke-WebRequest -UseBasicParsing "http://localhost:9200/_cat/indices").Content -split "`n" | Select-String orderflow
    ```
    Debe aparecer al menos un índice `orderflow-logs-YYYY.MM.dd`.
 
@@ -160,8 +159,7 @@ has llegado, que no aparezcan es lo correcto.
 Comprueba primero si el exporter responde de verdad:
 
 ```powershell
-(Invoke-WebRequest -UseBasicParsing "http://localhost:9187/metrics").Content -split "`n" | Select-Object -First 5   # postgres
-(Invoke-WebRequest -UseBasicParsing "http://localhost:9121/metrics").Content -split "`n" | Select-Object -First 5   # redis
+foreach ($p in 9187, 9121) { "--- puerto $p ---"; (Invoke-WebRequest -UseBasicParsing "http://localhost:$p/metrics").Content -split "`n" | Select-Object -First 5 }
 ```
 
 <details>
@@ -222,8 +220,7 @@ Ninguno de los dos hace fallar nada: el documento entra en Elasticsearch igual,
 pero mal. Por eso hay que buscarlos a propósito.
 
 ```powershell
-Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:_grokparsefailure"
-Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:_dateparsefailure"
+foreach ($t in "_grokparsefailure","_grokparsefailure_sysloginput","_dateparsefailure") { "$t : $((Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_count?q=tags:$t").count)" }
 ```
 
 <details>
@@ -287,8 +284,7 @@ ella.
 ### MailHog vacío (Sesión 5)
 
 ```powershell
-Invoke-RestMethod -Method Post http://localhost:9093/-/reload
-docker compose logs alertmanager --tail 20
+Invoke-RestMethod -Method Post http://localhost:9093/-/reload; docker compose logs alertmanager --tail 20
 ```
 
 Un `dial tcp: connection refused` significa que MailHog aún estaba arrancando.

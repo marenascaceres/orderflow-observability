@@ -201,7 +201,9 @@ Desde **PowerShell**:
 ```powershell
 # Todas las métricas de OrderFlow con su descripción
 (Invoke-WebRequest -UseBasicParsing http://localhost:8001/metrics).Content -split "`n" | Select-String "^# HELP orderflow"
+```
 
+```powershell
 # ¿Existe esta métrica concreta?
 (Invoke-WebRequest -UseBasicParsing http://localhost:8001/metrics).Content -split "`n" | Select-String "queue_depth"
 ```

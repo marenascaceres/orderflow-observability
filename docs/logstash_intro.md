@@ -81,9 +81,14 @@ En **PowerShell**:
 ```powershell
 # Listar índices y cuántos documentos tiene cada uno
 Invoke-RestMethod "http://localhost:9200/_cat/indices?v"
+```
 
+```powershell
 # Buscar documentos por campo
 Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_search?q=level:ERROR"
+```
+
+```powershell
 Invoke-RestMethod "http://localhost:9200/orderflow-logs-*/_search?q=event:order_failed"
 ```
 

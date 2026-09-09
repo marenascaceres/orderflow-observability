@@ -400,8 +400,7 @@ traduce el exporter.
 > Desde **PowerShell**:
 >
 > ```powershell
-> (Invoke-WebRequest -UseBasicParsing http://localhost:9187/metrics).Content -split "`n" |
->   Select-String "pg_stat_database_numbackends"
+> (Invoke-WebRequest -UseBasicParsing http://localhost:9187/metrics).Content -split "`n" | Select-String "pg_stat_database_numbackends"
 > ```
 >
 > Si no devuelve nada, busca cuál sí existe con
