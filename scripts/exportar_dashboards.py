@@ -90,10 +90,18 @@ PASSWORD = os.getenv("GRAFANA_ADMIN_PASSWORD", "admin")
 UID_AUTOGENERADO = re.compile(r"^[a-z0-9]{12,}$")
 
 # Claves que Grafana usa para su propia contabilidad y que no significan
-# nada en otra instalacion. Si se dejan, el JSON del repo cambia solo
-# cada vez que alguien abre el dashboard, y el historial se llena de
-# ruido.
-CLAVES_LOCALES = ("version", "iteration")
+# nada en otra instalacion.
+#
+# "version" NO se quita, aunque cambie en cada guardado y ensucie el diff
+# con una linea. Grafana la incrementa al guardar, y un dashboard
+# provisionado desde un archivo que no la trae falla al editarlo desde la
+# interfaz:
+#
+#     Cannot assign to read only property 'version' of object
+#
+# Es el limite de normalizar: se puede quitar lo que sobra, no lo que la
+# herramienta necesita para funcionar.
+CLAVES_LOCALES = ("iteration",)
 
 VERDE, ROJO, AMARILLO, GRIS, FIN = "\033[92m", "\033[91m", "\033[93m", "\033[90m", "\033[0m"
 if os.name == "nt" and not os.getenv("WT_SESSION"):

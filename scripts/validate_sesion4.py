@@ -214,10 +214,25 @@ def check_provisionado():
         return False, f"Grafana no responde ({type(e).__name__})"
 
     meta = data.get("meta", {})
-    if not meta.get("provisioned"):
-        return False, "existe, pero guardado a mano: no viene del archivo (Paso 15)"
     carpeta = meta.get("folderTitle", "General")
-    return True, f"provisionado, carpeta '{carpeta}'"
+
+    if meta.get("provisioned"):
+        return True, f"provisionado, carpeta '{carpeta}'"
+
+    # Con allowUiUpdates: true, guardar desde la interfaz hace que Grafana
+    # deje de marcarlo como provisionado, y no lo vuelve a marcar: el
+    # provider solo reaplica el archivo cuando este cambia.
+    #
+    # Lo que de verdad hay que comprobar no es esa etiqueta, sino que el
+    # dashboard vive como codigo. Si el archivo existe con el uid correcto,
+    # el objetivo de la sesion esta cumplido: borra el volumen de Grafana,
+    # levanta de nuevo, y el dashboard vuelve.
+    ruta, _ = _leer_dashboard()
+    if ruta is not None:
+        return True, (f"carpeta '{carpeta}', y {ruta.name} existe "
+                      "(marcado como manual: allowUiUpdates)")
+
+    return False, "existe en Grafana, pero no hay ningun archivo que lo defina (Paso 15)"
 
 
 def check_metricas_existen():
