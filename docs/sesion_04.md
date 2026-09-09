@@ -121,6 +121,17 @@ providers:
     # tambien el dashboard. Lo dejamos en false para que el estado de
     # Grafana siempre refleje el contenido del repo.
     disableDeletion: false
+    # true = puedes editar y guardar desde Grafana, y el provider lo
+    # respeta: no te devuelve el dashboard al estado del archivo. Es lo
+    # comodo para trabajar, y lo normal en un entorno de desarrollo.
+    #
+    # En produccion se pone en false, porque alli interesa lo contrario:
+    # que nadie cambie un panel de madrugada sin dejar rastro.
+    #
+    # El precio de true es que Grafana y el archivo pueden separarse. Por
+    # eso existe scripts/exportar_dashboards.py: cuando termines de
+    # ajustar, lo ejecutas y el archivo recoge tus cambios.
+    allowUiUpdates: true
     # Cada 30s relee la carpeta. Editas el JSON, guardas, refrescas
     # el navegador y ves el cambio: no hace falta reiniciar Grafana.
     updateIntervalSeconds: 30
@@ -134,6 +145,30 @@ providers:
       path: /etc/grafana/dashboards
       foldersFromFilesStructure: false
 ```
+
+> **`allowUiUpdates` decide si podrás editar el dashboard desde Grafana**, y es
+> una de esas opciones que conviene entender ahora y no dentro de tres meses:
+>
+> | | `false` | `true` (lo que ponemos) |
+> |---|---|---|
+> | Editar y guardar en Grafana | El provider lo revierte a los 30 s | Se guarda y se queda |
+> | Si cambia el **archivo** | El archivo manda | El archivo manda igualmente |
+> | Para qué sirve | Producción: que nadie toque nada sin dejar rastro | Desarrollo: trabajar cómodo |
+>
+> Con `true` puedes montar paneles a clics, que es como se trabaja de verdad. A
+> cambio, Grafana y el archivo **pueden separarse**: lo que edites solo existe en
+> Grafana hasta que lo exportes.
+>
+> Para eso está `scripts/exportar_dashboards.py`, que verás al final de la sesión.
+> El ciclo completo queda así:
+>
+> ```
+> editas en Grafana  →  Save  →  ejecutas el script  →  git diff  →  commit
+> ```
+>
+> **La regla:** ejecuta el script cuando quieras que el trabajo sobreviva a algo —
+> antes de un `commit`, antes de apagar, antes de un `docker compose down -v`. No
+> hace falta mientras estás probando.
 
 ### Paso 4 — Montar la carpeta dentro de Grafana
 
