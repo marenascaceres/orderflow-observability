@@ -36,6 +36,19 @@ Al terminar serás capaz de:
 Necesitas el stack de la Sesión 3 funcionando: 13 servicios, con métricas en
 Prometheus y logs en Elasticsearch.
 
+```powershell
+docker compose up -d; docker compose ps --format "{{.Name}}" | Measure-Object -Line
+```
+
+**Tienen que salir 13.** Y si salen menos, **no sigas**: falta algún servicio en tu
+`docker-compose.yml`, probablemente por un bloque mal pegado en una sesión anterior.
+
+> **Por qué insistimos tanto en ese número.** Un servicio de menos **no da ningún
+> error hoy**: los contenedores que ya estaban en marcha siguen funcionando por su
+> cuenta —Docker los llama *huérfanos* y a veces lo menciona de pasada— y todo
+> parece normal. El síntoma aparece dos sesiones después, en forma de panel vacío
+> que nadie sabe explicar.
+
 Hoy no descargas nada. Los tres cambios de configuración de esta sesión los
 escribes tú, y son cortos.
 
@@ -57,8 +70,13 @@ Aquí es donde vivirá tu dashboard al final de la sesión.
 
 ### Paso 2 — Fijar el `uid` de los datasources
 
-Abre `grafana/provisioning/datasources/datasources.yml`. Verás dos datasources
-declarados, `Prometheus` y `Elasticsearch`.
+> 📄 **Archivo de este paso:** `grafana/provisioning/datasources/datasources.yml`
+
+Ábrelo. Verás dos datasources declarados, `Prometheus` y `Elasticsearch`.
+
+> **Ojo, que los tres pasos siguientes tocan tres archivos distintos**, y dos de
+> ellos tienen nombres casi idénticos y viven en carpetas hermanas. Antes de pegar
+> nada, comprueba en qué archivo estás.
 
 **En el primero**, justo debajo de `type: prometheus`, añade:
 
@@ -79,7 +97,11 @@ declarados, `Prometheus` y `Elasticsearch`.
 
 ### Paso 3 — Declarar el provider de dashboards
 
-Abre `grafana/provisioning/dashboards/dashboards.yml`. Hoy dice:
+> 📄 **Archivo de este paso:** `grafana/provisioning/dashboards/dashboards.yml`
+> — ojo, **no** es el mismo del paso anterior: aquel era `datasources`, éste es
+> `dashboards`.
+
+Hoy dice:
 
 ```yaml
 providers: []
@@ -103,18 +125,25 @@ providers:
     # el navegador y ves el cambio: no hace falta reiniciar Grafana.
     updateIntervalSeconds: 30
     options:
-      # Esta ruta es la de DENTRO del contenedor. docker-compose.yml
-      # monta ./grafana/dashboards del repo justo aqui.
-      path: /etc/grafana/provisioning/dashboards/json
+      # Ruta de DENTRO del contenedor, donde docker-compose.yml montara
+      # tu carpeta ./grafana/dashboards en el paso siguiente.
+      #
+      # Fijate en que va AL LADO de "provisioning", no dentro: ese otro
+      # volumen esta montado en solo lectura, y Docker no puede crear un
+      # punto de montaje dentro de algo que no puede escribir.
+      path: /etc/grafana/dashboards
       foldersFromFilesStructure: false
 ```
 
 ### Paso 4 — Montar la carpeta dentro de Grafana
 
-Grafana todavía no puede ver tu carpeta `grafana/dashboards/`: está fuera del
-contenedor. Hay que montarla.
+> 📄 **Archivo de este paso:** `docker-compose.yml`, en la raíz del repositorio.
 
-Abre `docker-compose.yml`, busca el servicio `grafana` y su sección `volumes:`:
+Grafana todavía no puede ver tu carpeta `grafana/dashboards/`: está fuera del
+contenedor. Un contenedor es una caja cerrada con su propio sistema de archivos, y
+no ve tu disco. Para que lo vea hay que abrirle una ventana, y eso es un *volumen*.
+
+Busca el servicio `grafana` y su sección `volumes:`:
 
 ```yaml
     volumes:
@@ -122,14 +151,49 @@ Abre `docker-compose.yml`, busca el servicio `grafana` y su sección `volumes:`:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
 ```
 
-Añade una tercera línea debajo:
+Antes de escribir nada, lee una de las que ya están, porque su forma lo explica
+todo:
+
+```
+      - ./grafana/provisioning : /etc/grafana/provisioning : ro
+          └── tu disco ───┘      └── dentro del contenedor ─┘  └ solo lectura
+```
+
+Tres partes separadas por dos puntos: qué carpeta tuya, dónde aparece dentro de la
+caja, y con qué permisos.
+
+Añade una tercera línea debajo, con la misma sangría:
 
 ```yaml
       # Sesion 4: los dashboards viven versionados en el repo. El provider
       # "orderflow" de grafana/provisioning/dashboards/dashboards.yml lee
       # de esta ruta de dentro del contenedor.
-      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards/json:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
 ```
+
+La parte derecha es **exactamente** la ruta que escribiste en el Paso 3. Ahí se
+cierra el circuito.
+
+> **Por qué no cuelga de `/etc/grafana/provisioning/...`**, que sería lo intuitivo:
+> ese destino está **dentro** del volumen anterior, que se monta en solo lectura.
+> Para crear ahí el punto de montaje, Docker tendría que escribir en una zona
+> precintada, y **Grafana no arranca**:
+>
+> ```
+> error mounting ... create mountpoint ...: read-only file system
+> ```
+>
+> Como las dos rutas son ahora simétricas —`grafana/dashboards` fuera,
+> `/etc/grafana/dashboards` dentro— también es más fácil de recordar.
+
+**Comprueba que los dos extremos coinciden** antes de levantar nada:
+
+```powershell
+Select-String "etc/grafana/dashboards" .\docker-compose.yml, .\grafana\provisioning\dashboards\dashboards.yml
+```
+
+Deben salir **dos** líneas, una de cada archivo. Si sale una sola, falta un extremo
+del pasadizo.
 
 ### Paso 5 — Levantar y comprobar
 
@@ -144,7 +208,29 @@ Es el único que cambió: tiene un volumen nuevo. Los demás ni se enteran.
 docker compose logs grafana --tail 20
 ```
 
-No debe haber líneas con `level=error`.
+**Lo que confirma que ha ido bien** son estas dos líneas seguidas, sin nada entre
+ellas:
+
+```
+level=info msg="starting to provision dashboards"
+level=info msg="finished to provision dashboards"
+```
+
+> **Tres `level=error` que salen siempre y son inofensivos.** Grafana busca cinco
+> carpetas de provisioning y tú solo tienes dos:
+>
+> ```
+> Failed to read plugin provisioning files    path=.../plugins
+> Can't read alert notification provisioning  path=.../notifiers
+> can't read alerting provisioning files      path=.../alerting
+> ```
+>
+> Las otras tres son **opcionales**, pero las reporta como error igualmente. Es el
+> vecino que pasa lista de las cinco llaves del portal y anuncia que falta la del
+> trastero, aunque tú no tengas trastero.
+>
+> Detalle para dentro de dos semanas: **el de `alerting` desaparecerá en la Sesión
+> 5**, cuando crees esa carpeta.
 
 > **Si Grafana no dice `Recreated`**, es que el cambio del `docker-compose.yml` no
 > se guardó. Sin ese volumen, el resto de la sesión no funciona.
@@ -240,7 +326,26 @@ romper nada de manera irreversible.
 ## Bloque 1 — Grafana ya tiene los datos conectados
 
 **Paso 6.** Abre `http://localhost:3000`. Usuario `admin`, contraseña `admin`.
-Si te pide cambiarla, puedes saltar el paso.
+
+> ⚠️ **Grafana te va a pedir que cambies la contraseña**, porque `admin` es la de
+> fábrica. Tienes dos opciones y las dos valen:
+>
+> - Pulsar **`Skip`** (el enlace pequeño de debajo del formulario) y seguir con
+>   `admin`.
+> - Cambiarla — y entonces **anótala**.
+>
+> **Si la cambias, apúntala en algún sitio.** No es solo para entrar a la web: la
+> vas a necesitar hoy mismo en el validador del Paso 24, y en la **Sesión 6**, donde
+> vas a consultar Grafana desde Python. Un `401 Unauthorized` dentro de un notebook
+> es de las cosas más difíciles de relacionar con un clic que diste dos semanas
+> antes.
+>
+> **Si te quedaste sin ella**, se restablece sin perder nada —ni dashboards ni
+> datasources:
+>
+> ```powershell
+> docker compose exec grafana grafana cli admin reset-admin-password admin
+> ```
 
 **Paso 7.** Ve a **Connections → Data sources**. Verás dos, ya configurados:
 
@@ -262,12 +367,19 @@ acabas de fijar tú en el Paso 2.
 > *Datasource not found* en cada panel. Fijarlo a mano es lo que hace el
 > dashboard portable.
 
-**Paso 8.** Ve a **Explore** (el icono de la brújula), elige el datasource
-**Prometheus** y ejecuta:
+**Paso 8.** Ve a **Explore** (el icono de la brújula, en la barra lateral), elige
+el datasource **Prometheus** y ejecuta:
 
 ```promql
 orderflow_orders_processed_total
 ```
+
+> 🔑 **Antes de escribir nada: pulsa `Code`.** La zona de consulta tiene dos
+> botones a la derecha, **Builder** y **Code**, y Grafana abre siempre en *Builder*
+> — un formulario de desplegables donde no hay dónde teclear.
+>
+> Todas las consultas de este manual están escritas, así que **este manual se sigue
+> siempre en modo `Code`**. Vale para Explore y para cada panel que construyas hoy.
 
 Es la misma consulta de la Sesión 1, pero aquí no hay que salir a otra herramienta.
 Explore es para investigar; los dashboards son para vigilar.
@@ -279,9 +391,28 @@ Explore es para investigar; los dashboards son para vigilar.
 **Paso 9.** **Dashboards → New → New dashboard → Add visualization**. Elige el
 datasource **Prometheus**.
 
-Cada panel se construye igual: escribes la consulta abajo, eliges el tipo de
-visualización arriba a la derecha, ajustas las opciones del panel y pulsas
-**Save dashboard** (o **Back to dashboard** para seguir añadiendo).
+Cada panel se construye igual: escribes la consulta abajo (en modo **Code**), eliges
+el tipo de visualización arriba a la derecha, ajustas las opciones del panel y
+pulsas **Save dashboard** (o **Back to dashboard** para seguir añadiendo).
+
+> ⚠️ **La primera vez que guardes, hazlo así, y no de otra forma:**
+>
+> | Campo | Valor |
+> |---|---|
+> | **Folder** | `General` |
+> | **Dashboard name** | `OrderFlow — Overview (borrador)` |
+>
+> **Por qué no en la carpeta `OrderFlow`**, que es la que te ofrece Grafana y la que
+> parece lógica: esa carpeta la creó tu propio provider en el Paso 3, y a partir del
+> Paso 15 va a recibir el dashboard **provisionado desde archivo**. Si guardas ahí
+> uno con el mismo título, los dos chocan — y Grafana resuelve el choque **sin decir
+> nada**: o no carga el del archivo, o lo carga y **se lleva por delante el tuyo**.
+>
+> Con carpeta y nombre distintos no hay choque, y en el Paso 17 podrás ver los dos a
+> la vez y comparar.
+>
+> (Si pruebas a llamarlo `OrderFlow`, a secas, Grafana lo rechaza: no admite que un
+> dashboard se llame igual que su carpeta.)
 
 ### Panel 1 — Throughput
 
@@ -294,7 +425,16 @@ visualización arriba a la derecha, ajustas las opciones del panel y pulsas
 - **Tipo:** Time series
 - **Título:** `Throughput (órdenes/seg)`
 - **Legend → Legend format:** `{{region}}`
+- **Legend → Mode:** `Table` · **Values:** marca `Last *`
 - **Standard options → Unit:** `requests/sec (rps)`
+
+> **Ese `Last *` es lo que convierte una gráfica en un panel que se puede
+> vigilar.** Una serie temporal dibuja la evolución, pero no enseña ninguna cifra:
+> para leer un valor habría que pasar el ratón por encima. Con esta opción, debajo
+> de la gráfica aparece cada región con su último valor.
+>
+> El asterisco significa «el último valor que no esté vacío», y evita que el panel
+> parpadee en blanco cuando una muestra aún no ha llegado.
 
 Un counter solo sabe crecer. Graficarlo crudo dibuja una rampa que sube siempre y
 no dice nada. `rate()` lo convierte en velocidad: órdenes por segundo. Eso sí se
@@ -329,6 +469,23 @@ algún momento el processor está parado, esa suma vale cero y la división devu
 Los umbrales que acabas de poner no son decorativos. En la Sesión 5 el mismo `15`
 va a ser el umbral de una alerta que te escribe un correo.
 
+> **Tu panel no va a marcar 5 %, y está bien.** El sistema falla uno de cada veinte
+> pedidos, pero este panel mira **los últimos cinco minutos**: unos 300 pedidos, de
+> los que fallan unos 15. Que salgan 7 o que salgan 22 es puro azar, así que verás
+> el número **bailar entre el 2 % y el 8 %**. El 5 % solo aparece limpio al mirar
+> una hora entera.
+>
+> Compruébalo tú mismo en **Explore**, con `increase` sobre una hora:
+>
+> ```promql
+> sum(increase(orderflow_orders_failed_total[1h])) / (sum(increase(orderflow_orders_processed_total[1h])) + sum(increase(orderflow_orders_failed_total[1h]))) * 100
+> ```
+>
+> **Y la ventana corta no es un error, es una decisión.** Un panel de vigilancia
+> tiene que reaccionar deprisa: si usara una hora, un incidente tardaría media hora
+> en verse. Se acepta que el número esté nervioso a cambio de que avise pronto. Para
+> un informe mensual elegirías lo contrario.
+
 ### Panel 3 — Latencia P95
 
 - **Consulta:**
@@ -339,7 +496,13 @@ va a ser el umbral de una alerta que te escribe un correo.
 
 - **Tipo:** Time series
 - **Título:** `Latencia P95 (seg)`
+- **Legend → Mode:** `Table` · **Values:** marca `Last *`
 - **Standard options → Unit:** `seconds (s)`
+
+> **Fíjate en lo que hace la unidad.** El valor real es algo como `0.712`, y
+> Grafana te lo enseña como **`712 ms`** porque le has dicho que son segundos.
+> Sin unidad verías `0.712` a secas y tendrías que adivinar de qué. Configurar la
+> unidad no es cosmética: es lo que permite leer el panel sin pensar.
 
 Tres detalles que hacen fallar esta consulta si se te escapan:
 
@@ -369,6 +532,29 @@ Aplicarle `rate()` daría un sinsentido.
 
 Este panel responde a una pregunta concreta: ¿el processor va al ritmo del
 generator? Si la cola crece sin parar, no.
+
+> **Va a marcar 0, y ésa es la buena noticia.** El generator crea un pedido por
+> segundo y el processor tarda milisegundos en atenderlo: nunca se acumula nada.
+> Los umbrales de 30 y 70 no se alcanzan en un sistema sano.
+>
+> El problema es que un gauge en cero se parece mucho a un gauge sin datos. Así que
+> **haz que se mueva**: para el processor y mira la aguja.
+>
+> ```powershell
+> docker compose stop order-processor
+> ```
+>
+> El generator sigue creando pedidos y ya no los recoge nadie. En menos de un minuto
+> la aguja entra en amarillo, y luego en rojo. Es la primera vez en el curso que ves
+> el sistema enfermando en directo.
+>
+> ```powershell
+> docker compose start order-processor
+> ```
+>
+> Y observa cómo se vacía **de golpe**: el processor se pone al día en segundos. Eso
+> también enseña algo — la diferencia entre un atasco que se recupera solo y uno que
+> no.
 
 ---
 
@@ -421,14 +607,30 @@ darle un filtro.
 | Name | `region` |
 | Label | `Región` |
 | Data source | `Prometheus` |
-| Query type | `Label values` |
-| Label | `region` |
-| Metric | `orderflow_orders_processed_total` |
-| Multi-value | activado |
-| Include All option | activado |
+| **Query type** | **`Classic query`** |
+| Query | `label_values(orderflow_orders_processed_total, region)` |
+| Multi-value | **activado** |
+| Include All option | **activado** |
 
-Abajo, en **Preview of values**, deben aparecer tus regiones. Si sale vacío, la
-métrica está mal escrita.
+Esa línea se lee tal cual: «dame los valores distintos de la etiqueta `region` en
+esa métrica». **No escribes las regiones a mano: las descubre solas.** Si mañana la
+empresa abre en Tacna, el desplegable la incluye sin que nadie toque nada.
+
+> **Por qué `Classic query` y no `Label values`.** El desplegable ofrece también
+> `Label values`, que abre un formulario con campos separados. Funciona, pero **esa
+> pantalla cambia entre versiones de Grafana** y es fácil que la tuya no coincida
+> con lo que diga cualquier manual. La consulta clásica es una sola línea, no
+> depende de la disposición de la pantalla, y es la sintaxis que vas a encontrar en
+> la documentación y en cualquier foro.
+
+Abajo, en **Preview of values**, deben aparecer tus regiones. **Son cinco**:
+arequipa, cusco, lima, piura y trujillo. Cuéntalas — es fácil que una se te
+escape entre las demás, y esa confusión ya apareció en la Sesión 1.
+
+Si el preview sale vacío, revisa el nombre de la métrica.
+
+**No actives Multi-value e Include All a medias:** sin ellas, el desplegable te deja
+elegir una región y ninguna forma de volver a verlas todas.
 
 **Paso 11.** **Apply → Save dashboard.** Ponle de título `OrderFlow — Overview`.
 
@@ -478,15 +680,44 @@ El `id` es el identificador interno de *tu* base de datos de Grafana. Si lo deja
 Grafana intentará provisionar el dashboard sobre un id que en otra máquina
 pertenece a otro dashboard. Con `null`, cada instalación le asigna el suyo.
 
-Comprueba también que exista una línea `"uid": "orderflow-overview"`. Si tu JSON
-trae otro uid, cámbialo por ese: es el que va a buscar el validador.
+Comprueba también que exista una línea `"uid": "orderflow-overview"`. Tu JSON
+traerá un código aleatorio como `afxop4h0b5ds0f`: cámbialo por ese. Es el mismo
+problema del `uid` de los datasources del Paso 2, ahora en el dashboard — un
+identificador que solo significa algo en tu máquina.
+
+> **Revisa también si se ha colado suciedad de la interfaz.** Busca la palabra
+> `__systemRef`. Si aparece, verás un bloque parecido a éste:
+>
+> ```json
+> "overrides": [{ "__systemRef": "hideSeriesFrom", ... }]
+> ```
+>
+> Eso **no lo escribiste tú**: lo genera Grafana cuando haces clic en el nombre de
+> una serie en la leyenda para ocultarla. Es un gesto de un segundo que queda
+> **grabado para siempre** en el archivo que vas a versionar. Bórralo entero.
+>
+> Es la primera vez en el curso que ves que la herramienta escribe cosas que no le
+> pediste. Y es, precisamente, uno de los mejores argumentos para pasar a código:
+> en un archivo puedes verlo y quitarlo; dentro de una base de datos, no.
 
 **Paso 17.** Espera 30 segundos —el provider relee la carpeta en ese intervalo— y
-recarga Grafana. Ve a **Dashboards**. Ahora verás **una carpeta llamada
-`OrderFlow`** que antes no existía, y dentro, tu dashboard.
+recarga Grafana. Ve a **Dashboards**.
 
-Ese de la carpeta es el provisionado desde archivo. El que guardaste a clics sigue
-suelto en *General*.
+Ahora verás **dos**: en la carpeta `OrderFlow`, el provisionado desde tu archivo; y
+en *General*, el borrador que guardaste a clics en el Paso 9. Ábrelos: son
+idénticos, porque uno salió del otro.
+
+> 🔑 **A partir de este momento, el archivo manda.**
+>
+> El de la carpeta `OrderFlow` **no se edita a clics**. Puedes tocarlo, y parecerá
+> que se guarda, pero el provider relee la carpeta cada treinta segundos y **lo
+> devuelve a lo que diga el archivo**. Tu cambio desaparece sin ningún aviso.
+>
+> Para cambiar algo de ese dashboard hay dos caminos, y los dos son los correctos:
+> editar el JSON directamente, o editar el borrador de *General*, exportarlo otra
+> vez y sustituir el archivo.
+>
+> Es exactamente lo que se busca en producción, y es la razón de todo este bloque.
 
 **Paso 18 — La prueba de fuego.** Borra el dashboard que está en `OrderFlow`
 (**Dashboard settings → Delete dashboard**).
@@ -505,6 +736,16 @@ cualquier máquina que levante el stack.
 
 ## Bloque 5 — Kibana: de Discover a Dashboard
 
+> 🌐 **Cambiamos de herramienta.** Todo lo anterior era Grafana, en
+> `localhost:3000`. Este bloque entero es **Kibana**, en `localhost:5601`.
+>
+> | | Grafana `:3000` | Kibana `:5601` |
+> |---|---|---|
+> | Qué contiene | métricas, los números de Prometheus | logs, los textos de Elasticsearch |
+>
+> Las dos tienen menús con las palabras *Dashboard* y *Create*, así que cada paso de
+> aquí en adelante lleva su dirección completa.
+
 En la Sesión 3 dejaste el Data View `orderflow-logs-*` creado y aprendiste a
 buscar en Discover. Hoy conviertes esas búsquedas en gráficos.
 
@@ -522,7 +763,12 @@ guardada se puede reutilizar en un dashboard sin volver a escribirla.
 
 **Paso 21 — Visualización 1: motivos de fallo.**
 
-**Analytics → Visualize Library → Create visualization → Lens.**
+> 🌐 **Sigues en Kibana**, `http://localhost:5601`. Entra directo a
+> `http://localhost:5601/app/visualize` y pulsa **Create visualization → Lens**.
+>
+> *(Si prefieres el menú: botón **☰** → sección **Analytics** → **Visualize
+> Library**. Pero fíjate en que Grafana también tiene menús con esas palabras: la
+> dirección es inequívoca, el nombre de un menú no.)*
 
 - Data view: `orderflow-logs-*`
 - Tipo de gráfico: **Bar vertical**
@@ -538,7 +784,8 @@ Guarda como `Fallos por motivo`.
 
 **Paso 22 — Visualización 2: negocio contra operación.**
 
-Nueva visualización Lens:
+> 🌐 En Kibana: `http://localhost:5601/app/visualize` → **Create visualization →
+> Lens**.
 
 - Tipo de gráfico: **Pie**
 - **Slice by:** *Top values of* `event_category`
@@ -552,8 +799,10 @@ directa de aquel archivo.
 
 **Paso 23 — El dashboard.**
 
-**Analytics → Dashboard → Create dashboard → Add from library.** Añade las dos
-visualizaciones y la búsqueda guardada `Errores OrderFlow`.
+> 🌐 En Kibana: `http://localhost:5601/app/dashboards` → **Create dashboard → Add
+> from library**.
+
+Añade las dos visualizaciones y la búsqueda guardada `Errores OrderFlow`.
 
 Guarda el dashboard como `OrderFlow — Logs`.
 
@@ -562,6 +811,16 @@ Guarda el dashboard como `OrderFlow — Logs`.
 ```bash
 python scripts/validate_sesion4.py
 ```
+
+> **Si falla con un error de autenticación**, es que cambiaste la contraseña de
+> Grafana en el Paso 6. Pásasela así:
+>
+> ```powershell
+> $env:GRAFANA_ADMIN_PASSWORD = "la_que_pusiste"; python scripts\validate_sesion4.py
+> ```
+
+**Qué debes ver:** ocho comprobaciones en `OK` y una en `PEND` — la del Ejercicio C,
+que es trabajo que aún no has hecho. `PEND` no es un fallo: es una tarea pendiente.
 
 ---
 
@@ -614,6 +873,13 @@ Bloque 4 de la Sesión 2.*
 | Grafana no dijo `Recreated` al levantar | No se guardó el volumen del Paso 4 | Revisa `docker-compose.yml` y repite `docker compose up -d` |
 | No aparece la carpeta `OrderFlow` en Dashboards | Error de sintaxis en `dashboards.yml` o en el JSON | `docker compose logs grafana --tail 30`, busca `level=error` |
 | La carpeta aparece pero vacía | El archivo no está en `grafana/dashboards/` o no termina en `.json` | Comprueba la ruta y el nombre |
+| **Grafana no arranca**, con `read-only file system` | La ruta del volumen cuelga dentro de `/etc/grafana/provisioning` | Debe ser `/etc/grafana/dashboards`. Pasos 3 y 4 |
+| **No entra con `admin`/`admin`** | La contraseña se cambió en el primer inicio de sesión | `docker compose exec grafana grafana cli admin reset-admin-password admin` |
+| **El dashboard del archivo no aparece**, y los logs no dan error | Choca con otro del mismo título en la misma carpeta | El borrador va en `General` con otro nombre. Paso 9 |
+| Un cambio en `dashboards.yml` no surte efecto | Grafana lee la configuración del provider **solo al arrancar** | `docker compose restart grafana` |
+| Errores `EOF` al leer el JSON | Se leyó el archivo mientras estaba a medio guardar | Mira **la hora** del error: si es anterior a tu último guardado, ya está resuelto |
+| No hay dónde escribir la consulta | La zona de consulta está en modo **Builder** | Pulsa **Code** |
+| El validador dice que no existe una métrica que sí escribiste | Estás en una versión anterior del validador | Actualiza el repositorio: se corrigió tras el simulacro |
 | El panel P95 muestra `NaN` | Falta `_bucket` o falta `sum by (le)` | Revisa el Paso 9, Panel 3 |
 | El panel de Postgres sale vacío | Ese nombre de métrica no existe en tu exporter | Búscalo en `http://localhost:9187/metrics`, Panel 5 |
 | El desplegable `Región` sale vacío | La métrica de la variable está mal escrita | Revisa el Paso 10, campo *Metric* |

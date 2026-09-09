@@ -58,12 +58,37 @@ if _activar_color():
 else:
     RESET = GREEN = RED = YELLOW = BOLD = ""
 
+REPO = Path(__file__).resolve().parent.parent
+
+
+def _cargar_env() -> None:
+    """Lee el .env del repositorio, igual que hace docker compose.
+
+    Sin esto el validador usaria siempre admin/admin, y Grafana obliga a
+    cambiar la contrasena en el primer inicio de sesion: el alumno que la
+    cambie —es decir, casi todos— veria fallar el validador con un error
+    de autenticacion que no explica nada.
+
+    No sobrescribe lo que ya venga del entorno, para que siga sirviendo:
+        $env:GRAFANA_ADMIN_PASSWORD = "otra"; python scripts/validate_sesion4.py
+    """
+    env = REPO / ".env"
+    if not env.exists():
+        return
+    for linea in env.read_text(encoding="utf-8", errors="ignore").splitlines():
+        linea = linea.strip()
+        if not linea or linea.startswith("#") or "=" not in linea:
+            continue
+        clave, valor = linea.split("=", 1)
+        os.environ.setdefault(clave.strip(), valor.strip())
+
+
+_cargar_env()
+
 GRAFANA = f"http://localhost:{os.getenv('GRAFANA_PORT', '3000')}"
 PROMETHEUS = f"http://localhost:{os.getenv('PROMETHEUS_PORT', '9090')}"
 USER = os.getenv("GRAFANA_ADMIN_USER", "admin")
 PASSWORD = os.getenv("GRAFANA_ADMIN_PASSWORD", "admin")
-
-REPO = Path(__file__).resolve().parent.parent
 DASHBOARDS_DIR = REPO / "grafana" / "dashboards"
 UID = "orderflow-overview"
 
@@ -109,6 +134,22 @@ def check_datasource(uid: str, tipo: str):
     if data.get("type") != tipo:
         return False, f"el uid '{uid}' apunta a un datasource de tipo '{data.get('type')}'"
     return True, data.get("url", "")
+
+
+def _expresiones(data) -> list:
+    """Las consultas PromQL del dashboard, una por target.
+
+    Se recorren los paneles en vez de volcar el JSON entero a texto: asi
+    no se cuelan como metricas los titulos, las descripciones ni los
+    nombres de datasource.
+    """
+    out = []
+    for panel in data.get("panels", []):
+        for target in panel.get("targets", []):
+            expr = target.get("expr")
+            if expr:
+                out.append(expr)
+    return out
 
 
 def _leer_dashboard():
@@ -189,8 +230,13 @@ def check_metricas_existen():
     if ruta is None:
         return False, data
 
-    texto = json.dumps(data)
-    citadas = set(METRICA_RE.findall(texto))
+    citadas = set()
+    for expr in _expresiones(data):
+        # Los valores entre comillas no son nombres de metrica. Sin esta
+        # limpieza, el filtro {datname="orderflow_dw"} del Panel 5 se lee
+        # como una metrica llamada orderflow_dw, que no existe: el
+        # validador daba FAIL a quien lo habia hecho todo bien.
+        citadas |= set(METRICA_RE.findall(re.sub(r'"[^"]*"', '""', expr)))
     if not citadas:
         return False, "el dashboard no consulta ninguna metrica conocida"
 

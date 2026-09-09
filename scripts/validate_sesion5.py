@@ -114,7 +114,11 @@ def check_metricas_de_las_reglas():
 
     citadas = set()
     for expr in reglas.values():
-        citadas.update(METRICA_RE.findall(expr))
+        # Los valores entre comillas no son nombres de metrica. Sin esta
+        # limpieza, un filtro como {datname="orderflow_dw"} se leeria como
+        # una metrica inexistente y el validador daria FAIL a quien lo
+        # hubiera hecho todo bien. (Mismo fallo corregido en la Sesion 4.)
+        citadas.update(METRICA_RE.findall(re.sub(r'"[^"]*"', '""', expr)))
     if not citadas:
         return False, "ninguna regla consulta una metrica de OrderFlow"
 
