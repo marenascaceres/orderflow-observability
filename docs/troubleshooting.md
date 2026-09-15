@@ -121,7 +121,7 @@ El processor tolera que Logstash no esté disponible (no bloquea el pipeline pri
 
 ## Archivos que entrega el docente por la plataforma
 
-Tres sesiones necesitan archivos que no vienen en el repositorio. El docente los
+Cuatro sesiones necesitan archivos que no vienen en el repositorio. El docente los
 publica en la plataforma unos días antes. **Cada uno tiene su sitio exacto**: si
 lo dejas en otra carpeta, no falla con un mensaje claro — simplemente no ocurre
 nada.
@@ -130,7 +130,9 @@ nada.
 |:---:|---|---|
 | Sesión 3 | `orderflow.conf` | `logstash/pipeline/orderflow.conf` (reemplaza el que hay) |
 | Sesión 5 | `app.py`, `Dockerfile`, `requirements.txt` | `services/webhook-receiver/` (carpeta nueva) |
-| Sesión 5 | `orderflow-alerts.yml` | `grafana/provisioning/alerting/` (carpeta nueva) |
+| Sesión 5 | `alertmanager.yml` | `alertmanager/alertmanager.yml` (reemplaza el que hay) |
+| Sesión 5 | `alerts.yml` (para **Prometheus**) | `prometheus/alerts.yml` (reemplaza el que hay) |
+| Sesión 5 | `orderflow-alerts.yml` (para **Grafana**) | `grafana/provisioning/alerting/` (carpeta nueva) |
 | Sesión 6 | 4 × `.ipynb` + `requirements.txt` | `notebooks/` (carpeta nueva) |
 
 **Comprueba dónde estás antes de copiar.** Todas las rutas de la tabla son
@@ -274,21 +276,31 @@ minutos reales antes del disparo.
 
 ### La alerta llega al webhook pero no al correo (Sesión 5)
 
-Es el fallo silencioso clásico de Alertmanager. Si la última ruta lleva
-`matchers: severity=~"warning|info"`, una alerta `critical` no casa con ninguna
+Es el fallo silencioso clásico de Alertmanager. Si la última ruta lleva una
+condición como `severity="warning"`, una alerta `critical` no casa con ninguna
 ruta hermana después de la primera y nunca llega al correo.
 
 La ruta final debe ir **sin matchers**, para que recoja todo lo que llegue hasta
-ella.
+ella. Y la ruta del webhook debe llevar `continue: true`.
 
-### MailHog vacío (Sesión 5)
+### No llega ningún correo (Sesión 5)
+
+Primero, revisa la carpeta de **spam** de Gmail. Después, recarga Alertmanager y
+mira su registro:
 
 ```powershell
 Invoke-RestMethod -Method Post http://localhost:9093/-/reload; docker compose logs alertmanager --tail 20
 ```
 
-Un `dial tcp: connection refused` significa que MailHog aún estaba arrancando.
-Espera 30 segundos.
+| Si el registro dice… | Significa |
+|---|---|
+| `535` o `Username and Password not accepted` | La contraseña de aplicación es incorrecta o tiene espacios. Crea otra y pégala sin espacios en `alertmanager/smtp_password`. |
+| `no such file or directory` con `smtp_password` | Falta el volumen del Paso 4, o no recreaste Alertmanager: `docker compose up -d alertmanager`. |
+| `is a directory` | Docker creó una carpeta porque el archivo no existía. Borra la carpeta, crea el archivo y recrea Alertmanager. |
+| Nada raro | Comprueba que en `alertmanager.yml` no quede ningún `TU_CORREO`. |
+
+**Nunca pegues la contraseña en un chat ni en un comando** para pedir ayuda: con
+decir qué error aparece es suficiente.
 
 ### Los notebooks no encuentran las librerías (Sesión 6)
 

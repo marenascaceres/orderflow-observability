@@ -45,16 +45,27 @@ agruparlas, silenciarlas, enrutarlas a distintos canales, evitar notificaciones 
 
 | | Alertas en Grafana | Alertmanager |
 |---|---|---|
-| Dónde vive la regla | Dentro del dashboard | `prometheus/alerts.yml` |
+| Dónde vive la regla | En Grafana; en el curso, en un archivo que Grafana carga al arrancar | `prometheus/alerts.yml` |
 | Quién evalúa | Grafana | Prometheus |
 | Quién decide cómo notificar | Grafana (contact points) | Alertmanager (routes, receivers) |
 | Bueno para | Alertas ligadas a un panel puntual | Alertas centralizadas de todo el sistema |
 
 ## Una pista de lo que viene
 
-Los umbrales que ya definiste en Sesión 4 (verde < 5%, amarillo 5-15%, rojo > 15% de error rate)
-no fueron arbitrarios — son exactamente los que vas a reutilizar como condición de una regla
-de alerta real en Alertmanager.
+La consulta del panel "Tasa de error %" de la Sesión 4 no fue un ejercicio suelto: es
+exactamente la que vas a reutilizar como condición de una regla de alerta real. El panel se
+pone amarillo al 5 % y rojo al 15 %; la alerta avisará al pasar del 10 %, en plena zona
+amarilla, para que te enteres antes de que llegue a rojo.
+
+## Lo que necesitas traer a la Sesión 5
+
+**Una cuenta de Gmail personal con la verificación en dos pasos activada.** Las alertas de
+la sesión llegarán a tu correo de verdad, y Google solo permite que un programa envíe correo
+con una *contraseña de aplicación*, que exige esa verificación. Actívala antes de clase: el
+proceso incluye confirmar desde tu móvil y conviene no hacerlo con prisa.
+
+Algunas cuentas de empresa o de centros educativos no permiten contraseñas de aplicación.
+Si es tu caso, usa una cuenta personal.
 
 ## Para llegar con esto claro a Sesión 5
 

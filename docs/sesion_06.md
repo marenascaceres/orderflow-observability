@@ -17,7 +17,7 @@ Grafana y Kibana son excelentes para observar. Pero un informe que se genera sol
 cada mañana, un chequeo que corre en cada despliegue, o una notificación con tu
 propio criterio, no se hacen con clics: se hacen con código.
 
-El stack no crece: siguen siendo 15 servicios. Lo que cambia es quién los
+El stack no crece: siguen siendo 14 servicios. Lo que cambia es quién los
 consulta. Hasta hoy, tú a través de un navegador. Desde hoy, Python.
 
 Al terminar serás capaz de:
@@ -345,7 +345,7 @@ Grafana y Alertmanager. Las tres están llenas, y las llenaste tú:
 | 5 | Alertas que avisan solas, con criterio de a quién y cuándo |
 | 6 | Todo lo anterior, leído desde Python y convertido en una decisión |
 
-El stack pasó de 10 a 15 servicios sin que nada dejara de funcionar por el camino.
+El stack pasó de 10 a 14 servicios sin que nada dejara de funcionar por el camino.
 Cada sesión añadió; ninguna reemplazó.
 
 **El mini proyecto** está en `docs/mini_proyecto.md`.

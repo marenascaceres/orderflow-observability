@@ -33,3 +33,6 @@ logs/
 entregable_sesion*.md
 !scripts/entregable_sesion*_template.md
 screenshots/
+
+# Credenciales de Alertmanager: nunca al repositorio
+alertmanager/smtp_password

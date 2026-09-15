@@ -15,7 +15,7 @@ No tienes que escribir el servicio. Tienes que hacer visible lo que hace.
 
 ## Qué construir
 
-Trabajas sobre tu propio clon del repositorio, sobre el stack de 15 servicios que
+Trabajas sobre tu propio clon del repositorio, sobre el stack de 14 servicios que
 ya tienes funcionando. Todo lo que añadas debe convivir con lo que ya está: nada
 de reemplazar configuración existente.
 

@@ -61,7 +61,7 @@ deliberadamente **vacíos**:
 No están rotos. Están esperándote. Cada sesión del curso llena una de esas cajas,
 y en la Sesión 2 además le añadirás al stack tres servicios nuevos.
 
-Al final del curso pasarás de 10 a 15 servicios, y ninguno de los que hay hoy
+Al final del curso pasarás de 10 a 14 servicios, y ninguno de los que hay hoy
 desaparecerá. **Todo lo que construyas sigue vivo hasta la última sesión.**
 
 ---

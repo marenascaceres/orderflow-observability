@@ -108,6 +108,15 @@ _(sí / no, y qué pasó)_
 **Al parar el processor se disparan dos alertas y solo se notifica una.**
 _(Dos líneas: por qué.)_
 
+**Ejercicio C — Diseña un umbral.** Regla elegida: _(nombre)_
+
+_(Tres o cuatro líneas: por qué ese umbral, qué pasaría con un `for` de 10 segundos,
+qué harías si sonara tres veces por semana sin un problema real, y qué debería hacer
+si el servicio deja de enviar datos.)_
+
+**Ejercicio D — Grafana por correo.**
+_(Dos o tres líneas: por qué la contraseña no debe escribirse en `docker-compose.yml`.)_
+
 ---
 
 ## Sesión 6 — Optimización e integración con Python

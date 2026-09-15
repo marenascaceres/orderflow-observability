@@ -500,8 +500,9 @@ algún momento el processor está parado, esa suma vale cero y la división devu
 `NaN`: el panel se queda en blanco justo cuando más te interesa mirarlo.
 `clamp_min` le pone un suelo mínimo al denominador para que eso no ocurra.
 
-Los umbrales que acabas de poner no son decorativos. En la Sesión 5 el mismo `15`
-va a ser el umbral de una alerta que te escribe un correo.
+Los umbrales que acabas de poner no son decorativos. En la Sesión 5, esta misma
+consulta será una alerta que te escribe un correo cuando pase del `10`: en plena
+zona amarilla, antes de que el panel llegue a rojo.
 
 > **Tu panel no va a marcar 5 %, y está bien.** El sistema falla uno de cada veinte
 > pedidos, pero este panel mira **los últimos cinco minutos**: unos 300 pedidos, de
@@ -913,7 +914,7 @@ Bloque 4 de la Sesión 2.*
 | Un cambio en `dashboards.yml` no surte efecto | Grafana lee la configuración del provider **solo al arrancar** | `docker compose restart grafana` |
 | Errores `EOF` al leer el JSON | Se leyó el archivo mientras estaba a medio guardar | Mira **la hora** del error: si es anterior a tu último guardado, ya está resuelto |
 | No hay dónde escribir la consulta | La zona de consulta está en modo **Builder** | Pulsa **Code** |
-| El validador dice que no existe una métrica que sí escribiste | Estás en una versión anterior del validador | Actualiza el repositorio: se corrigió tras el simulacro |
+| El validador dice que no existe una métrica que sí escribiste | Tu copia del validador es anterior a la última corrección | Actualiza el repositorio |
 | El panel P95 muestra `NaN` | Falta `_bucket` o falta `sum by (le)` | Revisa el Paso 9, Panel 3 |
 | El panel de Postgres sale vacío | Ese nombre de métrica no existe en tu exporter | Búscalo en `http://localhost:9187/metrics`, Panel 5 |
 | El desplegable `Región` sale vacío | La métrica de la variable está mal escrita | Revisa el Paso 10, campo *Metric* |

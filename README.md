@@ -20,8 +20,8 @@ Lo que hay aquí es el **punto de partida**: 10 servicios funcionando. A partir 
 | 2 | 13 | `postgres-exporter`, `redis-exporter`, `pushgateway` y tu primera métrica en Python |
 | 3 | 13 | El segundo origen de logs y el pipeline que los estructura |
 | 4 | 13 | El provisioning de Grafana y tu dashboard |
-| 5 | 15 | `mailhog`, `webhook-receiver`, las reglas y el enrutamiento de alertas |
-| 6 | 15 | Los notebooks que consultan todo desde Python |
+| 5 | 14 | `webhook-receiver`, el correo a Gmail, las reglas y el enrutamiento de alertas |
+| 6 | 14 | Los notebooks que consultan todo desde Python |
 
 > **Tu repositorio y el del docente van a divergir, y eso es lo correcto.** El
 > tuyo crece con tu trabajo. Nunca hace falta un `git pull`.
@@ -36,6 +36,7 @@ Los archivos que no se teclean en clase —código Python largo, notebooks, pipe
 - **RAM libre**: 6 GB mínimo (recomendado 8 GB)
 - **Disco libre**: 10 GB (para imágenes + datos)
 - **Python 3.11+** (para los validadores y, en la Sesión 6, los notebooks)
+- **Una cuenta de Gmail con verificación en dos pasos** (Sesión 5: las alertas llegan a tu correo)
 
 **Puertos libres.** Los diez primeros hacen falta desde la Sesión 1; el resto se van usando conforme el stack crece:
 
@@ -44,7 +45,7 @@ Los archivos que no se teclean en clase —código Python largo, notebooks, pipe
 | 1 | 3000, 5044, 5432, 5601, 6379, 8000, 8001, 9090, 9093, 9200 |
 | 2 | 9091 (pushgateway), 9121 (redis-exporter), 9187 (postgres-exporter) |
 | 3 | 5000/udp (syslog de Logstash) |
-| 5 | 1025 y 8025 (MailHog), 5001 (webhook-receiver) |
+| 5 | 5001 (webhook-receiver) |
 
 > **Guía de instalación paso a paso**: ver el PDF de instalación entregado por el docente antes de la primera sesión.
 
@@ -93,7 +94,6 @@ Y los que construirás más adelante:
 | postgres-exporter | http://localhost:9187/metrics | Sesión 2 |
 | redis-exporter | http://localhost:9121/metrics | Sesión 2 |
 | Pushgateway | http://localhost:9091 | Sesión 2 |
-| MailHog (buzón de prueba) | http://localhost:8025 | Sesión 5 |
 | webhook-receiver | http://localhost:5001/health | Sesión 5 |
 
 ---
