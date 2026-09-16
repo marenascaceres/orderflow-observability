@@ -304,6 +304,120 @@ funcionan sin cuenta:
 tuya solo trae textos, cuenta algo, por ejemplo la longitud de un campo. El
 esqueleto lo explica.
 
+### Cómo funciona el esqueleto, parte por parte
+
+Antes de tocarlo, entiéndelo. Abre `notebooks/lab_pipeline.py`: son unas 250 líneas y
+**la mitad ya está resuelta**. Esa mitad no hay que escribirla, pero sí hay que saber
+qué hace, porque es donde está todo lo que has aprendido en el curso.
+
+#### Las tres conexiones
+
+```python
+PG = dict(host="localhost", port=5432, dbname="orderflow_dw", ...)
+PUSHGATEWAY = "localhost:9091"
+LOGSTASH = ("localhost", 5044)
+```
+
+**Las tres van a `localhost`**, y ese detalle es el mismo de la Sesión 5 al revés: tu
+pipeline corre **fuera** de la red de Docker, así que llama a los servicios por los
+puertos que el stack publica. Un contenedor, desde dentro, los llamaría por su nombre
+(`postgres`, `pushgateway`, `logstash`).
+
+Las credenciales salen de las mismas variables de tu `.env`, con el valor por defecto
+escrito al lado.
+
+#### La tabla
+
+```sql
+CREATE TABLE IF NOT EXISTS lab_items (
+    id          BIGSERIAL PRIMARY KEY,
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    pipeline    TEXT NOT NULL,
+    item_id     TEXT NOT NULL,
+    label       TEXT,
+    valor       DOUBLE PRECISION
+)
+```
+
+| Columna | Para qué |
+|---|---|
+| `id` | Un número que se pone solo con cada fila |
+| `fetched_at` | Cuándo se guardó. `DEFAULT now()`: lo rellena Postgres, tú no lo envías |
+| `pipeline` | **Tu nombre.** Todos los de la clase escriben en la misma tabla, y esta columna es la que separa tus filas de las de los demás |
+| `item_id`, `label`, `valor` | Los tres datos del hueco 2 |
+
+**`CREATE TABLE IF NOT EXISTS`** significa «créala si no está». Por eso puedes ejecutar
+el pipeline cien veces sin que falle la segunda.
+
+#### `log()` — el envío de los registros
+
+Es la función que usarás en el hueco 4. Hace dos cosas: imprime por pantalla y **envía
+el mismo mensaje a Logstash**, en JSON, por el puerto 5044.
+
+```python
+{"timestamp": "...", "level": "INFO", "event": "ciclo_ok", "pipeline": "lab_ana", "guardados": 100}
+```
+
+| Campo | Por qué está |
+|---|---|
+| `timestamp` | **En hora universal (UTC)**, igual que los contenedores. Si enviaras tu hora local, Logstash la leería como universal y tus logs aparecerían en Kibana desplazadas varias horas: los buscarías en «últimos 15 minutos» y no habría nada |
+| `level` | `INFO`, `WARNING` o `ERROR`. Es el campo por el que filtras y agrupas en Kibana |
+| `event` | El nombre corto de lo que pasó, para poder contar cuántas veces ocurre |
+| `pipeline` | Tu nombre otra vez, para ver solo lo tuyo |
+| Lo que añadas tú | Cada dato extra se convierte en **un campo buscable** |
+
+**Es el mismo formato que emite el order-processor**, y por eso Logstash lo entiende sin
+tocar su configuración: el `date` que estudiaste en la Sesión 3 espera exactamente ese
+formato de fecha, y tus mensajes acaban en el mismo índice `orderflow-logs-*`.
+
+Fíjate también en que **si el envío falla, el pipeline sigue**: avisa por pantalla y no
+se rompe. Un problema en el registro no debe tumbar el trabajo.
+
+#### `publicar_metricas()` — el envío al buzón
+
+```python
+push_to_gateway(PUSHGATEWAY, job=NOMBRE, registry=REGISTRO)
+```
+
+| Pieza | Qué es |
+|---|---|
+| `REGISTRO` | La caja donde viven tus métricas. Se envían todas juntas |
+| `job=NOMBRE` | **La etiqueta con la que aparecerán en Prometheus.** Es lo que te deja escribir `{job="lab_ana"}` y ver solo lo tuyo |
+| `push_to_gateway` | Deja los valores en el buzón. Prometheus los recoge en su siguiente ronda, dentro de 15 segundos |
+
+Se llama **al final de cada vuelta**, para que los números del buzón estén siempre al día.
+
+#### `sacar_lista()` — la parte fea de trabajar con APIs
+
+Unas APIs devuelven directamente una lista; otras la envuelven en un objeto con nombres
+como `results`, `data` o `items`. Esta función prueba los nombres más comunes y te
+devuelve la lista, venga como venga. **Así el hueco 2 es igual para todos.**
+
+#### `ciclo()` — una vuelta completa
+
+Es el corazón, y sigue siempre el mismo orden:
+
+```
+consultar la API  →  extraer()  →  guardar en Postgres  →  contar  →  publicar métricas
+                          │
+                          └─ lo que no sirve se descarta y se cuenta, no rompe nada
+```
+
+Dentro están marcados los tres sitios donde van tus logs y donde se actualizan tus
+métricas. **Mide el tiempo desde el principio** (`time.perf_counter()`) para que puedas
+publicar cuánto tardó.
+
+#### `main()` — el arranque
+
+Crea la tabla, avisa de que empieza, da las vueltas que digas y, pase lo que pase,
+escribe el log de cierre y suelta la conexión. El `Ctrl+C` está contemplado: para el
+pipeline sin dejar nada a medias.
+
+> **Lo que conviene llevarse de leer este archivo:** instrumentar un programa es
+> exactamente esto. Tres líneas para contar lo que hace, tres para contar lo que le pasa
+> y una tabla donde dejar el resultado. No es un trabajo aparte del programa: **es parte
+> de escribirlo.**
+
 ### Los cinco huecos del esqueleto
 
 Abre `notebooks/lab_pipeline.py`. Todo está resuelto menos cinco bloques marcados
