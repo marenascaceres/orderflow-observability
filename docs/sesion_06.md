@@ -20,12 +20,20 @@ propio criterio, no se hacen con clics: se hacen con código.
 El stack no crece: siguen siendo 14 servicios. Lo que cambia es quién los
 consulta. Hasta hoy, tú a través de un navegador. Desde hoy, Python.
 
+**La sesión tiene dos mitades:**
+
+| Mitad | Qué se hace |
+|---|---|
+| **Primera** | Consultar el stack desde Python: las métricas de Prometheus y los logs de Elasticsearch |
+| **Segunda** | **El trabajo práctico**: montar tu propio pipeline, con la API que tú elijas, y verlo aparecer en Prometheus, Elasticsearch, Grafana y Kibana |
+
 Al terminar serás capaz de:
 
 - Consultar la API HTTP de Prometheus con `query` y `query_range`.
 - Leer y agregar logs de Elasticsearch con el cliente oficial de Python.
-- Razonar el coste de una consulta y reducirlo con `sum by` y recording rules.
-- Construir un informe de salud que combine métricas, logs y un veredicto.
+- **Instrumentar un programa tuyo**: que publique métricas, escriba logs
+  estructurados y guarde sus datos, sin tocar la configuración del stack.
+- Ver tu propio programa en las mismas pantallas donde has visto OrderFlow.
 
 ---
 
@@ -35,24 +43,25 @@ Al terminar serás capaz de:
 
 ## Punto de partida
 
-Necesitas los **cinco archivos** que descargaste de la plataforma: los cuatro
-notebooks `.ipynb` y su `requirements.txt`.
+Necesitas los **seis archivos** que descargaste de la plataforma: los cuatro
+notebooks `.ipynb`, su `requirements.txt` y `lab_pipeline.py`, que es el esqueleto
+del trabajo práctico.
 
 **Paso 1.** Crea la carpeta `notebooks/` en tu repositorio y copia dentro los
-cinco archivos:
+seis archivos:
 
 **Windows (PowerShell):**
 ```powershell
-New-Item -ItemType Directory -Force -Path notebooks | Out-Null; Copy-Item "$HOME\Downloads\*.ipynb","$HOME\Downloads\requirements.txt" notebooks\
+New-Item -ItemType Directory -Force -Path notebooks | Out-Null; Copy-Item "$HOME\Downloads\*.ipynb","$HOME\Downloads\requirements.txt","$HOME\Downloads\lab_pipeline.py" notebooks\
 ```
 
 **Mac/Linux:**
 ```bash
 mkdir -p notebooks
-cp ~/Downloads/*.ipynb ~/Downloads/requirements.txt notebooks/
+cp ~/Downloads/*.ipynb ~/Downloads/requirements.txt ~/Downloads/lab_pipeline.py notebooks/
 ```
 
-Comprueba que están los cinco:
+Comprueba que están los seis:
 
 ```bash
 ls notebooks
@@ -194,81 +203,223 @@ Ese campo `tags` lo pusiste tú en el pipeline de Logstash de la Sesión 3, en l
 
 ---
 
-## Bloque 3 — Lo que cuesta una consulta
+## Bloque 3 — Dos ideas que conviene llevarse (10 minutos)
 
-Abre `03_optimizacion_promql_kql.ipynb`.
+Estas dos se ven en clase con los notebooks proyectados. **Los notebooks
+`03_optimizacion_promql_kql.ipynb` y `04_practica_final.ipynb` quedan para que los
+recorras después con calma**: están hechos y comentados.
 
-**Paso 11.** Ejecuta la celda que compara el número de series con `n_series()`.
+### Lo que cuesta una consulta
 
-Sin agregar, obtienes una serie por región. Agregando con `sum by (service)`,
-una sola. En un dashboard que se refresca cada 10 segundos, esa diferencia se
-multiplica por 8.640 al día.
+Cada combinación distinta de etiquetas es **una serie** que Prometheus guarda en
+memoria para siempre, aunque reciba un solo dato. El número de series es el
+producto de los valores posibles de todas las etiquetas:
 
-**Paso 12.** Ejecuta la celda de `series_totales()`.
+```
+regiones (5)  ×  estados (3)  =  15 series
+regiones (5)  ×  order_id (miles)  =  miles de series
+```
 
-Es la cuenta que hay que saber hacer **antes** de añadir una etiqueta: el número
-de series es el producto de los valores posibles de todas las etiquetas.
-
-Mira el último número, el que incluye `order_id`. Es la respuesta cuantificada al
-Ejercicio C de la Sesión 2. Cada una de esas series ocupa memoria en Prometheus
-de forma permanente, aunque reciba un solo dato.
-
-La regla práctica: una etiqueta vale si sus valores son **pocos, conocidos y
+**La regla práctica:** una etiqueta vale si sus valores son **pocos, conocidos y
 estables**. `region` sí. `customer_id` no. `order_id`, jamás.
 
-Y lo que necesita cardinalidad alta —el identificador de una orden concreta— va
-en los **logs**. Por eso el `order_id` está en Elasticsearch y no en Prometheus.
-Los dos pilares no compiten: se reparten el trabajo según el coste.
+Y lo que necesita identificar un caso concreto —el `order_id`— va en los **logs**.
+Por eso está en Elasticsearch y no en Prometheus. Los dos pilares no compiten: se
+reparten el trabajo según el coste.
 
-**Paso 13.** Lee el apartado de recording rules.
+**Las recording rules** son la otra mitad de esta idea: si una expresión es cara y
+se consulta mucho, Prometheus la calcula cada 30 segundos y guarda el resultado
+como métrica nueva. El panel lee un número ya hecho. Tienes el ejemplo completo en
+el notebook 3.
 
-Una recording rule calcula la expresión cara cada 30 segundos y guarda el
-resultado como métrica nueva. El panel lee un número ya hecho.
+### Una sola versión de la verdad
+
+El notebook 4 construye un informe de salud con un veredicto: `OK`, `ATENCIÓN` o
+`CRÍTICO`. Fíjate en sus umbrales: **error por encima del 10 %, p95 por encima de
+1 segundo**.
+
+Son exactamente los mismos números del panel de la Sesión 4 y de la alerta de la
+Sesión 5. No es casualidad: es el punto al que lleva el curso entero.
+
+Cuando el dashboard, la alerta y el informe miden lo mismo con los mismos
+umbrales, el equipo tiene **una** versión de la verdad. Cuando cada herramienta usa
+su propio criterio, llega el día en que el gráfico está verde, el correo dice que
+arde y el informe de la mañana dice otra cosa. Y entonces nadie cree a ninguno.
 
 ---
 
-## Bloque 4 — El informe de salud
+## Trabajo práctico — Tu propio pipeline vigilado
 
-Abre `04_practica_final.ipynb`.
+Hasta ahora has vigilado un sistema que te dieron hecho. **Ahora te toca construir
+uno y dejarlo vigilado**, con la API que tú elijas.
 
-**Paso 14.** Ejecuta las tres celdas en orden.
+### Qué vas a montar
 
-La última imprime un informe con throughput, porcentaje de error, latencia p95,
-errores en los logs, y un veredicto: `OK`, `ATENCIÓN` o `CRÍTICO`.
-
-**Paso 15.** Fíjate en los umbrales de la función `veredicto()`: error por encima
-del 10 %, o p95 por encima de 1 segundo, es `CRÍTICO`.
-
-Son **exactamente** los mismos números de la alerta de la Sesión 5 y del panel de
-la Sesión 4. Eso no es una coincidencia ni una casualidad de diseño: es el punto
-al que lleva el curso entero.
-
-Cuando el dashboard, la alerta y el informe miden lo mismo con los mismos
-umbrales, el equipo tiene **una** versión de la verdad. Cuando cada herramienta
-usa su propio criterio, llega el día en que el gráfico está verde, el correo dice
-que arde, y el informe de la mañana dice otra cosa. Y entonces nadie cree a
-ninguno.
-
-**Paso 16 — Verlo cambiar.** Sube `ERROR_RATE_PCT` a `30` en tu `.env`:
-
-```bash
-docker compose up -d order-processor
+```
+   la API que elijas
+          │
+          ▼
+    lab_pipeline.py  ──►  Postgres        (los datos)
+          │
+          ├──────────────►  Pushgateway   (las métricas)  ──►  Prometheus  ──►  Grafana
+          │
+          └──────────────►  Logstash      (los logs)      ──►  Elasticsearch ──►  Kibana
 ```
 
-Espera unos minutos y vuelve a ejecutar las celdas 2 y 3. El veredicto cambia a
-`CRÍTICO` sin que hayas tocado el código.
+Es exactamente lo que hace OrderFlow, en pequeño y con tus datos. **Corre en tu
+máquina**, como los notebooks, y no hace falta tocar `docker-compose.yml` ni la
+configuración de Prometheus.
 
-Devuélvelo a `5` cuando termines.
+**Por qué el Pushgateway y no un puerto propio.** Tu pipeline arranca, trabaja y
+termina. Prometheus pasa cada 15 segundos por una lista de sitios fijos y no lo
+encontraría nunca. El Pushgateway es el buzón que montaste en la Sesión 2
+precisamente para esto: tu programa deja ahí sus números y Prometheus los recoge
+en su siguiente ronda.
 
-**Paso 17.** Ejecuta el validador:
+### Lo que tiene que cumplir, elijas la API que elijas
+
+| Mínimo | Qué significa |
+|---|---|
+| **3 datos en Postgres** | Cada elemento que guardes lleva un identificador, un texto y un número |
+| **3 métricas** | Cuánto trabajo hecho, cuántos errores y cuándo fue el último ciclo correcto |
+| **3 logs** | Uno `INFO`, uno `WARNING` y uno `ERROR`, cada uno en su momento |
+
+Esos tres mínimos no dependen de la API: **son las tres preguntas que se le hacen a
+cualquier proceso**. ¿Está trabajando? ¿Está fallando? ¿Sigue vivo?
+
+### Elegir la API
+
+Cualquiera que sea **pública, devuelva JSON y no pida registro**. Tiene que
+devolver una lista de cosas, o algo de lo que puedas sacar una lista. Algunas que
+funcionan sin cuenta:
+
+| Tema | Dirección |
+|---|---|
+| Publicaciones de prueba | `https://jsonplaceholder.typicode.com/posts` |
+| Tiempo meteorológico | `https://api.open-meteo.com/v1/forecast?latitude=-12.05&longitude=-77.04&hourly=temperature_2m` |
+| Cotizaciones de divisas | `https://open.er-api.com/v6/latest/USD` |
+| Países | `https://restcountries.com/v3.1/all?fields=name,population,area` |
+
+**Elige una que traiga un número**: precio, temperatura, población, cantidad. Si la
+tuya solo trae textos, cuenta algo, por ejemplo la longitud de un campo. El
+esqueleto lo explica.
+
+### Los cinco huecos del esqueleto
+
+Abre `notebooks/lab_pipeline.py`. Todo está resuelto menos cinco bloques marcados
+con `TODO`. Este es el reparto de los 45 minutos:
+
+| # | Hueco | Qué hay que hacer | Tiempo |
+|---|---|---|---|
+| **1** | Tu API | Poner la dirección y un nombre para tu pipeline | 5 min |
+| **2** | `extraer()` | Sacar de cada elemento el identificador, el texto y el número | 10 min |
+| **3** | Las métricas | Añadir dos más a la que ya está | 10 min |
+| **4** | Los logs | Escribir los tres, en los sitios marcados | 10 min |
+| **5** | Mirarlo | Verlo en Prometheus, Elasticsearch, Grafana y Kibana | 10 min |
+
+**Instala lo que falta y arráncalo:**
+
+```powershell
+pip install -r notebooks/requirements.txt; python notebooks/lab_pipeline.py
+```
+
+Déjalo corriendo en su propia pestaña: da vueltas cada 20 segundos e imprime lo que
+va haciendo.
+
+### Hueco 5 — Ver tu pipeline en las cuatro pantallas
+
+**1. Tus datos, en Postgres.** Desde otra pestaña:
+
+```powershell
+docker compose exec postgres psql -U orderflow -d orderflow_dw -c "SELECT pipeline, count(*), max(fetched_at) FROM lab_items GROUP BY pipeline;"
+```
+
+**2. Tus métricas, en Prometheus.** En `http://localhost:9090` → **Graph**, escribe
+el nombre de tu contador. Si tu pipeline se llama `lab_ana`:
+
+```promql
+lab_items_guardados_total{job="lab_ana"}
+```
+
+> **Si no aparece**, comprueba primero el buzón: `http://localhost:9091`. Si tus
+> métricas están ahí y no en Prometheus, solo hay que esperar a la siguiente ronda.
+
+**3. Tus logs, en Kibana.** En `http://localhost:5601/app/discover`, con el patrón
+`orderflow-logs-*` que ya tienes, filtra por tu pipeline:
+
+```
+pipeline : "lab_ana"
+```
+
+Tus tres niveles tienen que aparecer en el campo `level`.
+
+**4. Un gráfico en Grafana.** En `http://localhost:3000`, panel nuevo con el
+datasource **Prometheus**, en modo **Code**:
+
+```promql
+rate(lab_items_guardados_total{job="lab_ana"}[5m])
+```
+
+Es la misma idea del panel de throughput de la Sesión 4: un contador no dice nada;
+su velocidad, sí.
+
+**5. Y un gráfico en Kibana.** Una visualización sobre `orderflow-logs-*`, filtrada
+por tu pipeline y partida por `level.keyword`: cuántos INFO, cuántos WARNING y
+cuántos ERROR.
+
+> **Para ver un `ERROR` de verdad**, rompe algo a propósito: cambia una letra de la
+> dirección de tu API y deja pasar una vuelta. Es la misma idea del incidente
+> provocado de la Sesión 5, y es la única forma de comprobar que tu log de error
+> funciona.
+
+### Al terminar: vacía tu buzón
+
+Cuando acabes, borra tus métricas del Pushgateway:
+
+```powershell
+Invoke-RestMethod -Method Delete http://localhost:9091/metrics/job/lab_ana
+```
+
+<details>
+<summary>La misma orden en Linux o Mac</summary>
+
+```bash
+curl -X DELETE http://localhost:9091/metrics/job/lab_ana
+```
+
+</details>
+
+**Por qué hace falta.** Es la trampa que viste en la Sesión 2: el buzón **no
+olvida**. Tu pipeline ya no está corriendo, pero sus últimos números siguen ahí, y
+Prometheus los seguirá recogiendo como si fueran de ahora. Un panel que los mire
+seguirá en verde eternamente.
+
+Por eso, en un caso real, el proceso que empuja al buzón **borra su grupo al
+terminar**, o alguien vigila la antigüedad de lo que hay dentro.
+
+### Si algo del pipeline falla
+
+| Síntoma | Causa probable | Solución |
+|---|---|---|
+| `ModuleNotFoundError: psycopg2` | Faltan dependencias | `pip install -r notebooks/requirements.txt` |
+| `connection refused` al arrancar | El stack no está levantado | `docker compose up -d` |
+| `relation "lab_items" does not exist` | La tabla se crea al arrancar; el script no llegó | Mira el error anterior en la pantalla |
+| Guarda 0 elementos en todas las vueltas | `extraer()` devuelve `None` siempre | Imprime un elemento y mira qué campos trae |
+| `TypeError: float() argument` | El campo que elegiste como número es un texto | Elige otro campo, o cuenta algo |
+| Las métricas no aparecen en Prometheus | Aún no ha pasado la ronda | Espera 15 segundos; comprueba `http://localhost:9091` |
+| Los logs no aparecen en Kibana | El envío falla en silencio | El script avisa por pantalla si no pudo enviarlos |
+| En Kibana sale el campo pero no filtra | Falta el sufijo `.keyword` | `level.keyword : "ERROR"` |
+
+---
+
+## Ejercicios (para después de clase)
+
+Los tres se hacen sobre los notebooks, con el stack levantado. Cuando termines,
+comprueba la sesión entera:
 
 ```bash
 python scripts/validate_sesion6.py
 ```
-
----
-
-## Ejercicios (haz estos tú solo)
 
 ### Ejercicio A — Errores por hora
 
@@ -343,7 +494,7 @@ Grafana y Alertmanager. Las tres están llenas, y las llenaste tú:
 | 3 | Dos orígenes de logs, estructurados y consultables |
 | 4 | Un dashboard que vive como código y sobrevive a que borren el volumen |
 | 5 | Alertas que avisan solas, con criterio de a quién y cuándo |
-| 6 | Todo lo anterior, leído desde Python y convertido en una decisión |
+| 6 | Todo lo anterior, leído desde Python — y un pipeline tuyo, vigilado igual |
 
 El stack pasó de 10 a 14 servicios sin que nada dejara de funcionar por el camino.
 Cada sesión añadió; ninguna reemplazó.
