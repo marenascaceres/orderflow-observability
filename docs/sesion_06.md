@@ -266,51 +266,136 @@ uno y dejarlo vigilado**, con la API que tú elijas.
           └──────────────►  Logstash      (los logs)      ──►  Elasticsearch ──►  Kibana
 ```
 
-Es exactamente lo que hace OrderFlow, en pequeño y con tus datos. **Corre en tu
-máquina**, como los notebooks, y no hace falta tocar `docker-compose.yml` ni la
-configuración de Prometheus.
+Es exactamente lo que hace OrderFlow, en pequeño y con tus datos. El programa repite
+un **ciclo** cada 20 segundos:
 
-**Por qué el Pushgateway y no un puerto propio.** Tu pipeline arranca, trabaja y
-termina. Prometheus pasa cada 15 segundos por una lista de sitios fijos y no lo
-encontraría nunca. El Pushgateway es el buzón que montaste en la Sesión 2
-precisamente para esto: tu programa deja ahí sus números y Prometheus los recoge
-en su siguiente ronda.
+```
+pedir datos a la API  →  quedarse con 3 datos de cada elemento  →  guardarlos
+        →  contar lo que hizo (métricas)  →  escribir lo que le pasó (logs)
+```
+
+**Corre en tu máquina**, como los notebooks, y no hace falta tocar `docker-compose.yml`
+ni la configuración de Prometheus.
+
+**Por qué las métricas van al Pushgateway.** Prometheus pasa cada 15 segundos por una
+lista fija de sitios. Tu programa arranca, trabaja y termina: Prometheus nunca sabría
+dónde buscarlo. El Pushgateway es el buzón que montaste en la Sesión 2 precisamente
+para esto: tu programa deja ahí sus números y Prometheus los recoge en su siguiente
+ronda.
 
 ### Lo que tiene que cumplir, elijas la API que elijas
 
 | Mínimo | Qué significa |
 |---|---|
 | **3 datos en Postgres** | Cada elemento que guardes lleva un identificador, un texto y un número |
-| **3 métricas** | Cuánto trabajo hecho, cuántos errores y cuándo fue el último ciclo correcto |
+| **3 métricas** | Cuánto trabajo hecho, cuántos errores y cómo fue el último ciclo |
 | **3 logs** | Uno `INFO`, uno `WARNING` y uno `ERROR`, cada uno en su momento |
 
 Esos tres mínimos no dependen de la API: **son las tres preguntas que se le hacen a
 cualquier proceso**. ¿Está trabajando? ¿Está fallando? ¿Sigue vivo?
 
-### Elegir la API
+---
 
-Cualquiera que sea **pública, devuelva JSON y no pida registro**. Tiene que
-devolver una lista de cosas, o algo de lo que puedas sacar una lista. Algunas que
-funcionan sin cuenta:
+### Paso 1 — Elegir la API y mirarla en el navegador
 
-| Tema | Dirección |
+Sirve cualquier API **pública, que devuelva JSON y no pida registro**, y que traiga
+una **lista de elementos**. Estas cuatro están comprobadas:
+
+| API | Dirección | Dónde está la lista | Dificultad |
+|---|---|---|---|
+| **Productos de prueba** | `https://dummyjson.com/products?limit=30` | dentro de `products` | Fácil: datos planos y con números |
+| Criptomonedas | `https://api.coinlore.net/api/tickers/?limit=20` | dentro de `data` | Media: el precio llega como texto |
+| Terremotos recientes | `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&limit=20&orderby=time` | dentro de `features` | Media: los datos están anidados |
+| Publicaciones de prueba | `https://jsonplaceholder.typicode.com/posts` | la respuesta es la lista | Fácil, pero no trae números |
+
+**Antes de escribir código, abre la dirección en el navegador.** Es la forma de saber
+qué campos tiene cada elemento.
+
+1. Copia la dirección y pégala en la barra del navegador (Chrome o Edge).
+2. Verás texto con llaves `{ }` y corchetes `[ ]`. Si se ve todo en una línea, marca la
+   casilla **«Dar formato»** (*Pretty-print*) que aparece arriba.
+3. Busca **la lista**: los corchetes `[` que contienen varios bloques `{ }` iguales.
+4. Mira **un solo elemento** y apunta los nombres de sus campos.
+
+Así se ve un producto de la primera API:
+
+```json
+{
+  "products": [
+    {
+      "id": 1,
+      "title": "Essence Mascara Lash Princess",
+      "category": "beauty",
+      "price": 9.99,
+      "rating": 2.56,
+      "stock": 99
+    },
+    { "id": 2, "title": "Eyeshadow Palette with Mirror", "price": 19.99, ... }
+  ],
+  "total": 194
+}
+```
+
+**Cómo leerlo:**
+
+| Lo que ves | Qué es |
 |---|---|
-| Publicaciones de prueba | `https://jsonplaceholder.typicode.com/posts` |
-| Tiempo meteorológico | `https://api.open-meteo.com/v1/forecast?latitude=-12.05&longitude=-77.04&hourly=temperature_2m` |
-| Cotizaciones de divisas | `https://open.er-api.com/v6/latest/USD` |
-| Países | `https://restcountries.com/v3.1/all?fields=name,population,area` |
+| `"products": [ ... ]` | **La lista.** Cada `{ }` de dentro es un elemento |
+| `"id": 1` | Un campo con **número** |
+| `"title": "Essence..."` | Un campo con **texto**: va entre comillas |
+| `"price": 9.99` | Un **número** sin comillas: sirve como valor |
+| `"price": "9.99"` | Si lo vieras **con comillas**, sería texto que parece número: habría que convertirlo |
 
-**Elige una que traiga un número**: precio, temperatura, población, cantidad. Si la
-tuya solo trae textos, cuenta algo, por ejemplo la longitud de un campo. El
-esqueleto lo explica.
+**De cada elemento necesitas tres campos:** uno que lo identifique, uno de texto y uno
+numérico. En los productos: `id`, `title` y `price`.
 
-### Cómo funciona el esqueleto, parte por parte
+> Si tu API tiene los datos **anidados** (un `{ }` dentro de otro), el campo se lee por
+> pasos. En los terremotos, la magnitud está en `properties` → `mag`, y en Python se
+> escribe `item["properties"]["mag"]`.
 
-Antes de tocarlo, entiéndelo. Abre `notebooks/lab_pipeline.py`: son unas 250 líneas y
-**la mitad ya está resuelta**. Esa mitad no hay que escribirla, pero sí hay que saber
-qué hace, porque es donde está todo lo que has aprendido en el curso.
+---
 
-#### Las tres conexiones
+### Paso 2 — Entender el archivo, de arriba abajo
+
+Abre `notebooks/lab_pipeline.py`. **Solo tienes que tocar cuatro huecos**, marcados con
+`TODO`; todo lo demás ya funciona. Pero antes hay que entender qué hace cada parte, en
+el mismo orden en que aparece.
+
+#### 1. La cabecera y los `import`
+
+```python
+import json, os, socket, time
+from datetime import datetime, timezone
+
+import psycopg2
+import requests
+from prometheus_client import CollectorRegistry, Counter, Gauge, push_to_gateway
+```
+
+| Librería | Para qué |
+|---|---|
+| `requests` | Pedir datos a la API |
+| `psycopg2` | Hablar con Postgres |
+| `prometheus_client` | Crear las métricas y enviarlas al buzón. Es la misma que usa el processor de OrderFlow |
+| `socket`, `json` | Enviar los logs a Logstash |
+| `datetime` | Poner la hora a cada log |
+
+#### 2. `TODO 1` — Tu nombre y tu API
+
+```python
+NOMBRE = "lab_cambia_esto"
+API_URL = "https://cambia.esta.url/que/devuelve/json"
+INTERVALO_S = 20
+VUELTAS = 15
+```
+
+| Variable | Qué es |
+|---|---|
+| `NOMBRE` | Cómo se llamará tu pipeline. **Es tu etiqueta**: con ella verás solo lo tuyo en Postgres, Prometheus y Kibana, aunque toda la clase use el mismo stack. En minúsculas, sin espacios y único, por ejemplo `lab_ana` |
+| `API_URL` | La dirección del Paso 1 |
+| `INTERVALO_S`, `VUELTAS` | Cada cuánto repite el ciclo y cuántas veces: 15 vueltas cada 20 segundos son 5 minutos |
+
+#### 3. Las conexiones
 
 ```python
 PG = dict(host="localhost", port=5432, dbname="orderflow_dw", ...)
@@ -318,177 +403,302 @@ PUSHGATEWAY = "localhost:9091"
 LOGSTASH = ("localhost", 5044)
 ```
 
-**Las tres van a `localhost`**, y ese detalle es el mismo de la Sesión 5 al revés: tu
-pipeline corre **fuera** de la red de Docker, así que llama a los servicios por los
-puertos que el stack publica. Un contenedor, desde dentro, los llamaría por su nombre
-(`postgres`, `pushgateway`, `logstash`).
+Las tres van a `localhost` porque tu programa corre **fuera** de la red de Docker y
+entra por los puertos que el stack publica. Un contenedor, desde dentro, los llamaría
+por su nombre (`postgres`, `pushgateway`, `logstash`). No hay que tocar nada aquí.
 
-Las credenciales salen de las mismas variables de tu `.env`, con el valor por defecto
-escrito al lado.
+#### 4. `TODO 2` — `extraer()`: tus tres datos
 
-#### La tabla
+Recibe **un** elemento de la lista y devuelve los tres datos. Con los productos:
 
-```sql
-CREATE TABLE IF NOT EXISTS lab_items (
-    id          BIGSERIAL PRIMARY KEY,
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    pipeline    TEXT NOT NULL,
-    item_id     TEXT NOT NULL,
-    label       TEXT,
-    valor       DOUBLE PRECISION
+```python
+def extraer(item):
+    item_id = item.get("id")
+    label = item.get("title")
+    valor = item.get("price")
+
+    if item_id is None or valor is None:
+        return None
+
+    return str(item_id), str(label), float(valor)
+```
+
+| Línea | Qué hace |
+|---|---|
+| `item.get("id")` | *«Dame el campo `id` de este elemento.»* El nombre sale de lo que viste en el navegador. Si el campo no existe, devuelve `None` en vez de romperse |
+| `if ... is None: return None` | Si falta algo imprescindible, el elemento se **descarta**: el programa lo cuenta y sigue |
+| `str(...)`, `float(...)` | Convierte al tipo que espera la tabla: texto, texto y número |
+
+**Si tu API no trae ningún número**, cuenta algo: `float(len(item.get("body", "")))` es
+la longitud de un texto.
+
+**Si el número llega como texto** (`"price_usd": "76190.56"`), `float()` lo convierte.
+
+#### 5. `TODO 3` — Las métricas
+
+Es la parte más importante del trabajo. Mírala despacio.
+
+**Primero, la caja donde viven:**
+
+```python
+REGISTRO = CollectorRegistry()
+```
+
+Un **registro** es la caja donde se guardan tus métricas mientras el programa corre.
+Cuando llega el momento, se envía **la caja entera** al buzón. Toda métrica que crees
+tiene que ir dentro de esta caja; si no, nunca sale de tu programa.
+
+**Después, la métrica que ya está hecha, parte por parte:**
+
+```python
+items_guardados = Counter(
+    "lab_items_guardados_total",        # 1. el nombre, tal como aparecerá en Prometheus
+    "Elementos guardados en Postgres",  # 2. la descripción, para quien la lea
+    registry=REGISTRO,                  # 3. la caja donde vive
 )
 ```
 
-| Columna | Para qué |
-|---|---|
-| `id` | Un número que se pone solo con cada fila |
-| `fetched_at` | Cuándo se guardó. `DEFAULT now()`: lo rellena Postgres, tú no lo envías |
-| `pipeline` | **Tu nombre.** Todos los de la clase escriben en la misma tabla, y esta columna es la que separa tus filas de las de los demás |
-| `item_id`, `label`, `valor` | Los tres datos del hueco 2 |
+| Parte | Qué es | Norma |
+|---|---|---|
+| `items_guardados` | El nombre **en tu código**. Con él la usas: `items_guardados.inc(30)` | El que quieras |
+| `Counter(...)` | El **tipo** de métrica | Ver la tabla siguiente |
+| `"lab_items_guardados_total"` | El nombre **en Prometheus**. Es lo que escribirás en Grafana | Empieza por `lab_`; minúsculas y guiones bajos; los contadores acaban en `_total` |
+| `"Elementos guardados..."` | La descripción | Una frase corta |
+| `registry=REGISTRO` | Dentro de la caja | **Obligatorio** |
 
-**`CREATE TABLE IF NOT EXISTS`** significa «créala si no está». Por eso puedes ejecutar
-el pipeline cien veces sin que falle la segunda.
+**Los dos tipos que vas a usar**, los mismos de la Sesión 2:
 
-#### `log()` — el envío de los registros
-
-Es la función que usarás en el hueco 4. Hace dos cosas: imprime por pantalla y **envía
-el mismo mensaje a Logstash**, en JSON, por el puerto 5044.
-
-```python
-{"timestamp": "...", "level": "INFO", "event": "ciclo_ok", "pipeline": "lab_ana", "guardados": 100}
-```
-
-| Campo | Por qué está |
-|---|---|
-| `timestamp` | **En hora universal (UTC)**, igual que los contenedores. Si enviaras tu hora local, Logstash la leería como universal y tus logs aparecerían en Kibana desplazadas varias horas: los buscarías en «últimos 15 minutos» y no habría nada |
-| `level` | `INFO`, `WARNING` o `ERROR`. Es el campo por el que filtras y agrupas en Kibana |
-| `event` | El nombre corto de lo que pasó, para poder contar cuántas veces ocurre |
-| `pipeline` | Tu nombre otra vez, para ver solo lo tuyo |
-| Lo que añadas tú | Cada dato extra se convierte en **un campo buscable** |
-
-**Es el mismo formato que emite el order-processor**, y por eso Logstash lo entiende sin
-tocar su configuración: el `date` que estudiaste en la Sesión 3 espera exactamente ese
-formato de fecha, y tus mensajes acaban en el mismo índice `orderflow-logs-*`.
-
-Fíjate también en que **si el envío falla, el pipeline sigue**: avisa por pantalla y no
-se rompe. Un problema en el registro no debe tumbar el trabajo.
-
-#### `publicar_metricas()` — el envío al buzón
-
-```python
-push_to_gateway(PUSHGATEWAY, job=NOMBRE, registry=REGISTRO)
-```
-
-| Pieza | Qué es |
-|---|---|
-| `REGISTRO` | La caja donde viven tus métricas. Se envían todas juntas |
-| `job=NOMBRE` | **La etiqueta con la que aparecerán en Prometheus.** Es lo que te deja escribir `{job="lab_ana"}` y ver solo lo tuyo |
-| `push_to_gateway` | Deja los valores en el buzón. Prometheus los recoge en su siguiente ronda, dentro de 15 segundos |
-
-Se llama **al final de cada vuelta**, para que los números del buzón estén siempre al día.
-
-#### `sacar_lista()` — la parte fea de trabajar con APIs
-
-Unas APIs devuelven directamente una lista; otras la envuelven en un objeto con nombres
-como `results`, `data` o `items`. Esta función prueba los nombres más comunes y te
-devuelve la lista, venga como venga. **Así el hueco 2 es igual para todos.**
-
-#### `ciclo()` — una vuelta completa
-
-Es el corazón, y sigue siempre el mismo orden:
-
-```
-consultar la API  →  extraer()  →  guardar en Postgres  →  contar  →  publicar métricas
-                          │
-                          └─ lo que no sirve se descarta y se cuenta, no rompe nada
-```
-
-Dentro están marcados los tres sitios donde van tus logs y donde se actualizan tus
-métricas. **Mide el tiempo desde el principio** (`time.perf_counter()`) para que puedas
-publicar cuánto tardó.
-
-#### `main()` — el arranque
-
-Crea la tabla, avisa de que empieza, da las vueltas que digas y, pase lo que pase,
-escribe el log de cierre y suelta la conexión. El `Ctrl+C` está contemplado: para el
-pipeline sin dejar nada a medias.
-
-> **Lo que conviene llevarse de leer este archivo:** instrumentar un programa es
-> exactamente esto. Tres líneas para contar lo que hace, tres para contar lo que le pasa
-> y una tabla donde dejar el resultado. No es un trabajo aparte del programa: **es parte
-> de escribirlo.**
-
-### Los cinco huecos del esqueleto
-
-Abre `notebooks/lab_pipeline.py`. Todo está resuelto menos cinco bloques marcados
-con `TODO`. Este es el reparto de los 45 minutos:
-
-| # | Hueco | Qué hay que hacer | Tiempo |
+| Tipo | Se comporta como | Se usa con | Para qué |
 |---|---|---|---|
-| **1** | Tu API | Poner la dirección y un nombre para tu pipeline | 5 min |
-| **2** | `extraer()` | Sacar de cada elemento el identificador, el texto y el número | 10 min |
-| **3** | Las métricas | Añadir dos más a la que ya está | 10 min |
-| **4** | Los logs | Escribir los tres, en los sitios marcados | 10 min |
-| **5** | Mirarlo | Verlo en Prometheus, Elasticsearch, Grafana y Kibana | 10 min |
+| **`Counter`** | Un cuentakilómetros: **solo sube** | `.inc()` suma 1 · `.inc(30)` suma 30 | Cosas que se acumulan: elementos guardados, errores |
+| **`Gauge`** | Un velocímetro: **sube y baja** | `.set(0.87)` pone ese valor | Un estado del momento: cuánto tardó el último ciclo |
 
-**Instala lo que falta y arráncalo:**
+**Y dónde se usa la que ya está hecha**, dentro de `ciclo()`:
+
+```python
+if filas:
+    guardar(conexion, filas)
+    items_guardados.inc(len(filas))   # suma los elementos que acaba de guardar
+```
+
+**Tu trabajo: crear dos más con el mismo patrón**, y usarlas en su sitio:
+
+```python
+errores = Counter(
+    "lab_errores_total",
+    "Ciclos que terminaron en error",
+    registry=REGISTRO,
+)
+
+ultimo_ciclo = Gauge(
+    "lab_ultimo_ciclo_duracion_seconds",
+    "Lo que tardo el ultimo ciclo",
+    registry=REGISTRO,
+)
+```
+
+| Métrica | Dónde se usa | Instrucción |
+|---|---|---|
+| `errores` | En el bloque de error de `ciclo()` (marcado `TODO 4 (ERROR)`) | `errores.inc()` |
+| `ultimo_ciclo` | Al final de `ciclo()` (marcado `TODO 3`) | `ultimo_ciclo.set(duracion)` |
+
+`duracion` ya está calculada en `ciclo()`: son los segundos que tardó la vuelta.
+
+> **Cómo crear cualquier otra métrica:** elige el tipo (¿se acumula o sube y baja?),
+> copia el bloque, cambia el nombre de la variable, el nombre en Prometheus y la
+> descripción, deja `registry=REGISTRO`, y **úsala** en el punto del ciclo donde ocurre
+> lo que mide. Una métrica creada y nunca usada aparece en Prometheus con valor 0.
+
+#### 6. `TODO 4` — Los logs
+
+La función `log()` ya está hecha. Se usa así:
+
+```python
+log("INFO", "ciclo_ok", guardados=30, duracion_s=0.87)
+#     │        │           └── datos extra: cada uno será un campo buscable en Kibana
+#     │        └── el nombre del suceso
+#     └── el nivel: INFO, WARNING o ERROR
+```
+
+Tienes que escribir tres, en los tres sitios marcados con `TODO 4` dentro de `ciclo()`:
+
+| Sitio | Nivel | Ejemplo |
+|---|---|---|
+| El bloque `except` (la API falló) | `ERROR` | `log("ERROR", "ciclo_fallido", motivo=type(e).__name__, detalle=str(e)[:200])` |
+| `if not filas:` (no se guardó nada) | `WARNING` | `log("WARNING", "ciclo_sin_datos", recibidos=len(elementos), descartados=descartados)` |
+| Al final del ciclo | `INFO` | `log("INFO", "ciclo_ok", guardados=len(filas), descartados=descartados, duracion_s=round(duracion, 3))` |
+
+**La diferencia con un `print`:** un `print` se pierde en la pantalla; un log
+estructurado se puede buscar, filtrar y contar.
+
+#### 7. La parte resuelta: tabla, envío de logs y envío de métricas
+
+| Pieza | Qué hace |
+|---|---|
+| `SQL_TABLA` | Crea la tabla `lab_items` **si no existe**. Columnas: `id`, `fetched_at` (la hora, la pone Postgres), `pipeline` (tu nombre), `item_id`, `label` y `valor` |
+| `log()` | Imprime el mensaje y lo envía a Logstash en JSON, **en hora universal**. Con la hora local, tus logs aparecerían horas atrás en Kibana. Si el envío falla, avisa y sigue |
+| `guardar()` | Inserta tus filas en una sola operación |
+| `publicar_metricas()` | Envía la caja `REGISTRO` al buzón con la etiqueta `job` = tu `NOMBRE`. Por eso en Prometheus filtras con `{job="lab_ana"}` |
+| `sacar_lista()` | Encuentra la lista dentro de la respuesta, se llame `products`, `data` o `features` |
+
+#### 8. `ciclo()` — una vuelta, en orden
+
+```
+1. inicio = ahora
+2. pedir la API        ── si falla ──►  TODO 4 (ERROR) + errores.inc()  → fin de la vuelta
+3. sacar_lista()
+4. extraer() de cada elemento  (los que devuelven None se cuentan como descartados)
+5. guardar() + items_guardados.inc()
+6. duracion = ahora - inicio
+7. si no se guardó nada  ──►  TODO 4 (WARNING)
+8. TODO 4 (INFO)
+9. TODO 3: ultimo_ciclo.set(duracion)
+10. publicar_metricas()
+```
+
+#### 9. `main()` — el arranque
+
+Conecta con Postgres, crea la tabla, escribe el log de inicio, da las vueltas y, al
+terminar o al pulsar `Ctrl+C`, escribe el log de cierre y suelta la conexión.
+
+---
+
+### Paso 3 — Completar y ejecutar
+
+| # | Hueco | Tiempo |
+|---|---|---|
+| 1 | `NOMBRE` y `API_URL` | 5 min |
+| 2 | `extraer()` | 10 min |
+| 3 | Dos métricas más, y usarlas | 10 min |
+| 4 | Los tres logs | 10 min |
+| 5 | Ejecutar y comprobar | 10 min |
+
+Instala lo que falta y arráncalo:
 
 ```powershell
 pip install -r notebooks/requirements.txt; python notebooks/lab_pipeline.py
 ```
 
-Déjalo corriendo en su propia pestaña: da vueltas cada 20 segundos e imprime lo que
-va haciendo.
+Déjalo corriendo en su pestaña. Cada vuelta imprime sus logs, por ejemplo:
 
-### Hueco 5 — Ver tu pipeline en las cuatro pantallas
+```
+--- vuelta 1 ---
+  INFO     ciclo_ok {'guardados': 30, 'descartados': 0, 'duracion_s': 0.872}
+```
 
-**1. Tus datos, en Postgres.** Desde otra pestaña:
+---
+
+### Paso 4 — Comprobar los tres rastros
+
+Abre **otra pestaña**, colócate en la carpeta del repositorio y copia estos comandos.
+**Cambia `lab_ana` por tu `NOMBRE`** en cada uno.
+
+#### Comprobación 1 — Los datos, en Postgres
 
 ```powershell
-docker compose exec postgres psql -U orderflow -d orderflow_dw -c "SELECT pipeline, count(*), max(fetched_at) FROM lab_items GROUP BY pipeline;"
+docker compose exec postgres psql -U orderflow -d orderflow_dw -c "SELECT pipeline, count(*) AS filas, round(avg(valor)::numeric, 2) AS media, max(fetched_at) AS ultima FROM lab_items WHERE pipeline = 'lab_ana' GROUP BY pipeline;"
 ```
 
-**2. Tus métricas, en Prometheus.** En `http://localhost:9090` → **Graph**, escribe
-el nombre de tu contador. Si tu pipeline se llama `lab_ana`:
+**Qué esperamos:** una fila con tu nombre, cuántas filas llevas, la media de `valor` y la
+hora de la última. Si lo ejecutas dos veces, `filas` crece.
 
-```promql
-lab_items_guardados_total{job="lab_ana"}
+| Para ver… | Cambia la consulta por |
+|---|---|
+| Tus 5 elementos con el valor más alto | `SELECT item_id, label, valor FROM lab_items WHERE pipeline = 'lab_ana' ORDER BY valor DESC LIMIT 5;` |
+| Lo guardado en cada vuelta | `SELECT date_trunc('minute', fetched_at) AS minuto, count(*) FROM lab_items WHERE pipeline = 'lab_ana' GROUP BY minuto ORDER BY minuto;` |
+| Lo de toda la clase | Quita el `WHERE pipeline = ...` |
+
+La parte que se cambia es **siempre lo que va entre comillas dobles** después de `-c`.
+
+#### Comprobación 2 — Las métricas, en el buzón
+
+```powershell
+(Invoke-WebRequest -UseBasicParsing http://localhost:9091/metrics).Content -split "`n" | Select-String 'job="lab_ana"' | Select-String -NotMatch "_created"
 ```
 
-> **Si no aparece**, comprueba primero el buzón: `http://localhost:9091`. Si tus
-> métricas están ahí y no en Prometheus, solo hay que esperar a la siguiente ronda.
-
-**3. Tus logs, en Kibana.** En `http://localhost:5601/app/discover`, con el patrón
-`orderflow-logs-*` que ya tienes, filtra por tu pipeline:
+**Qué esperamos:** tus métricas con su valor:
 
 ```
-pipeline : "lab_ana"
+lab_errores_total{instance="",job="lab_ana"} 0
+lab_items_guardados_total{instance="",job="lab_ana"} 90
+lab_ultimo_ciclo_duracion_seconds{instance="",job="lab_ana"} 0.87
+push_time_seconds{instance="",job="lab_ana"} 1.78e+09
 ```
 
-Tus tres niveles tienen que aparecer en el campo `level`.
+`push_time_seconds` y `push_failure_time_seconds` los añade el buzón: son la hora del
+último envío. `-NotMatch "_created"` oculta otra serie que la librería crea sola para
+cada contador, con la hora en que nació.
 
-**4. Un gráfico en Grafana.** En `http://localhost:3000`, panel nuevo con el
-datasource **Prometheus**, en modo **Code**:
+#### Comprobación 3 — Las métricas, en Prometheus
+
+```powershell
+(Invoke-RestMethod http://localhost:9090/api/v1/query -Body @{ query = '{job="lab_ana"}' }).data.result | ForEach-Object { "{0} = {1}" -f $_.metric.__name__, $_.value[1] }
+```
+
+**Qué esperamos:** las mismas métricas. Si están en el buzón y aquí no, espera 15
+segundos: aún no ha pasado la ronda.
+
+| Para preguntar… | Cambia lo que va dentro de `query = '...'` por |
+|---|---|
+| Solo tu contador | `lab_items_guardados_total{job="lab_ana"}` |
+| Elementos por segundo | `rate(lab_items_guardados_total{job="lab_ana"}[5m])` |
+| Cuánto tardó el último ciclo | `lab_ultimo_ciclo_duracion_seconds{job="lab_ana"}` |
+
+Es la misma consulta que escribirías en `http://localhost:9090` → **Graph**, y la misma
+que irá en Grafana.
+
+#### Comprobación 4 — Los logs, en Elasticsearch
+
+```powershell
+(Invoke-RestMethod -Method Post "http://localhost:9200/orderflow-logs-*/_search" -ContentType "application/json" -Body '{"size":0,"query":{"term":{"pipeline.keyword":"lab_ana"}},"aggs":{"niveles":{"terms":{"field":"level.keyword"}}}}').aggregations.niveles.buckets | ForEach-Object { "{0} = {1}" -f $_.key, $_.doc_count }
+```
+
+**Qué esperamos:** cuántos logs tienes de cada nivel, por ejemplo `INFO = 16`.
+
+| Partes de la consulta | Qué hace |
+|---|---|
+| `"size":0` | No traer documentos, solo el recuento (Bloque 2) |
+| `"term":{"pipeline.keyword":"lab_ana"}` | Solo tus logs. `.keyword` para comparar el texto entero |
+| `"terms":{"field":"level.keyword"}` | Agrupar por nivel |
+
+| Para contar… | Cambia `level.keyword` por |
+|---|---|
+| Por nombre de suceso | `event.keyword` |
+| Por motivo de error | `motivo.keyword` (el campo que pusiste en tu log de `ERROR`) |
+
+**Para ver un `ERROR` de verdad**, rompe algo a propósito: cambia una letra de tu
+`API_URL`, deja pasar una vuelta y repite la comprobación. Es la misma idea del incidente
+provocado de la Sesión 5.
+
+---
+
+### Paso 5 — Un gráfico en Grafana y otro en Kibana
+
+**En Grafana** (`http://localhost:3000`): **Dashboards → New → New dashboard → Add
+visualization**, datasource **Prometheus**, modo **Code**:
 
 ```promql
 rate(lab_items_guardados_total{job="lab_ana"}[5m])
 ```
 
-Es la misma idea del panel de throughput de la Sesión 4: un contador no dice nada;
-su velocidad, sí.
+Título: `Elementos por segundo — lab_ana`. Es la misma idea del panel de throughput de
+la Sesión 4: un contador no dice nada; su velocidad, sí.
 
-**5. Y un gráfico en Kibana.** Una visualización sobre `orderflow-logs-*`, filtrada
-por tu pipeline y partida por `level.keyword`: cuántos INFO, cuántos WARNING y
-cuántos ERROR.
+**En Kibana** (`http://localhost:5601`): **Visualize Library → Create visualization →
+Lens**, con el patrón `orderflow-logs-*`. En la barra de búsqueda:
 
-> **Para ver un `ERROR` de verdad**, rompe algo a propósito: cambia una letra de la
-> dirección de tu API y deja pasar una vuelta. Es la misma idea del incidente
-> provocado de la Sesión 5, y es la única forma de comprobar que tu log de error
-> funciona.
+```
+pipeline : "lab_ana"
+```
+
+Arrastra `level.keyword` al centro. Verás cuántos `INFO`, `WARNING` y `ERROR` tienes.
+
+> Si `pipeline` no aparece en la lista de campos, es que el patrón no se ha refrescado:
+> **Stack Management → Data Views → orderflow-logs-\* → Refresh fields**.
+
+---
 
 ### Al terminar: vacía tu buzón
-
-Cuando acabes, borra tus métricas del Pushgateway:
 
 ```powershell
 Invoke-RestMethod -Method Delete http://localhost:9091/metrics/job/lab_ana
@@ -503,13 +713,10 @@ curl -X DELETE http://localhost:9091/metrics/job/lab_ana
 
 </details>
 
-**Por qué hace falta.** Es la trampa que viste en la Sesión 2: el buzón **no
-olvida**. Tu pipeline ya no está corriendo, pero sus últimos números siguen ahí, y
-Prometheus los seguirá recogiendo como si fueran de ahora. Un panel que los mire
-seguirá en verde eternamente.
-
-Por eso, en un caso real, el proceso que empuja al buzón **borra su grupo al
-terminar**, o alguien vigila la antigüedad de lo que hay dentro.
+**Por qué hace falta.** Es la trampa que viste en la Sesión 2: el buzón **no olvida**. Tu
+pipeline ya no corre, pero sus últimos números siguen ahí y Prometheus los seguirá
+recogiendo como si fueran de ahora. Por eso, en un caso real, el proceso que usa el
+buzón **borra su grupo al terminar**.
 
 ### Si algo del pipeline falla
 
@@ -517,12 +724,13 @@ terminar**, o alguien vigila la antigüedad de lo que hay dentro.
 |---|---|---|
 | `ModuleNotFoundError: psycopg2` | Faltan dependencias | `pip install -r notebooks/requirements.txt` |
 | `connection refused` al arrancar | El stack no está levantado | `docker compose up -d` |
-| `relation "lab_items" does not exist` | La tabla se crea al arrancar; el script no llegó | Mira el error anterior en la pantalla |
-| Guarda 0 elementos en todas las vueltas | `extraer()` devuelve `None` siempre | Imprime un elemento y mira qué campos trae |
-| `TypeError: float() argument` | El campo que elegiste como número es un texto | Elige otro campo, o cuenta algo |
-| Las métricas no aparecen en Prometheus | Aún no ha pasado la ronda | Espera 15 segundos; comprueba `http://localhost:9091` |
-| Los logs no aparecen en Kibana | El envío falla en silencio | El script avisa por pantalla si no pudo enviarlos |
-| En Kibana sale el campo pero no filtra | Falta el sufijo `.keyword` | `level.keyword : "ERROR"` |
+| Guarda 0 elementos en todas las vueltas | Un nombre de campo en `extraer()` no existe | Vuelve al navegador y copia el nombre exacto |
+| `TypeError` o `ValueError` en `float()` | El campo elegido no es un número | Elige otro, o cuenta algo |
+| `KeyError` | Usaste `item["campo"]` con un campo que no existe | Usa `item.get("campo")` |
+| Una métrica no aparece en el buzón | Le falta `registry=REGISTRO` | Añádelo |
+| Una métrica aparece siempre a 0 | Se creó pero no se usa | Añade su `.inc()` o `.set()` en el ciclo |
+| Las métricas no aparecen en Prometheus | Aún no ha pasado la ronda | Espera 15 segundos; mira la Comprobación 2 |
+| Los logs no aparecen en Kibana | Filtro de tiempo demasiado corto, o campos sin refrescar | Amplía a «Last 1 hour»; refresca el data view |
 
 ---
 

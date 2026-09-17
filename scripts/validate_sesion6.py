@@ -120,7 +120,13 @@ def check_nombres_obsoletos():
     """Ningun notebook debe usar los nombres sin prefijo."""
     encontrados = []
     for nb in sorted(NOTEBOOKS.glob("*.ipynb")):
-        texto = nb.read_text(encoding="utf-8")
+        # El notebook 1 usa a proposito un nombre sin prefijo para ensenar que
+        # "no existe" devuelve vacio. Esa linea lo dice en su comentario y no
+        # debe contar como error.
+        texto = "\n".join(
+            linea for linea in nb.read_text(encoding="utf-8").splitlines()
+            if "no existe" not in linea.lower()
+        )
         for viejo in NOMBRES_OBSOLETOS:
             # Solo cuenta si NO va precedido de "orderflow_".
             if re.search(rf"(?<!orderflow_){re.escape(viejo)}", texto):
@@ -133,7 +139,12 @@ def check_nombres_obsoletos():
 def check_metricas_existen():
     citadas = set()
     for nb in sorted(NOTEBOOKS.glob("*.ipynb")):
-        citadas.update(METRICA_RE.findall(nb.read_text(encoding="utf-8")))
+        # Solo las celdas de codigo: son las consultas que se ejecutan. En los
+        # textos aparecen nombres que no son metricas, como el grupo y el
+        # nombre de una recording rule (job:orderflow_error_ratio:5m).
+        for _, tipo, src in _celdas_codigo(nb):
+            if tipo == "code":
+                citadas.update(METRICA_RE.findall(re.sub(r"\w*:\w+:\w+", "", src)))
     if not citadas:
         return False, "los notebooks no consultan ninguna metrica de OrderFlow"
     try:
@@ -147,11 +158,12 @@ def check_metricas_existen():
 
 
 def check_dependencias():
-    faltan = [m for m in ("requests", "pandas", "matplotlib", "elasticsearch")
-              if importlib.util.find_spec(m) is None]
+    # psycopg2 y prometheus_client los usa el trabajo practico (lab_pipeline.py).
+    modulos = ("requests", "pandas", "matplotlib", "elasticsearch", "psycopg2", "prometheus_client")
+    faltan = [m for m in modulos if importlib.util.find_spec(m) is None]
     if faltan:
         return False, f"faltan: {', '.join(faltan)} (pip install -r notebooks/requirements.txt)"
-    return True, "requests, pandas, matplotlib, elasticsearch"
+    return True, ", ".join(modulos)
 
 
 def check_prometheus_api():
